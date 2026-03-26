@@ -614,7 +614,7 @@ const DISTRICTS=[
 ];
 // Districts where Republican challengers face structural disadvantage
 const DEM_STRONGHOLDS=['hon-urban','maui','hawaii-isl','kauai'];
-const COMMITTEES=['Finance','Consumer Protection & Commerce','Judiciary & Hawaiian Affairs','Education','Higher Education','Legislative Management','Agriculture & Food Systems','Energy & Environmental Protection','Housing','Transportation','Health','Human Services & Homelessness','Public Safety','Water & Land','Economic Development & Technology Tourism','Culture & the Arts','Labor'];
+const COMMITTEES=['Finance','Consumer Protection & Commerce','Judiciary & Hawaiian Affairs','Education','Higher Education','Legislative Management','Agriculture & Food Systems','Energy & Environmental Protection','Housing','Transportation','Health','Human Services & Homelessness','Public Safety','Water & Land','Economic Development & Technology','Culture & the Arts','Labor','Tourism'];
 const LEADERSHIP=[
   {id:'speaker',       label:'Speaker',                capBonus:20},
   {id:'vice-speaker',  label:'Vice Speaker',           capBonus:4},
@@ -690,7 +690,7 @@ const DISTRICT_BILLS={
     {title:'Central Oahu Water Supply Security Act',desc:'Upgrade water system infrastructure to meet growing demand.',committees:[13,9,0]},
   ],
   'maui':[
-    {title:'Maui Visitor Industry Resilience Act',desc:'Strengthen tourism infrastructure and support sustainable visitor industry growth.',committees:[14,16,1]},
+    {title:'Maui Visitor Industry Resilience Act',desc:'Strengthen tourism infrastructure and support sustainable visitor industry growth.',committees:[17,16,1]},
     {title:'Maui Agricultural Heritage Preservation',desc:'Protect upcountry farmland and support diversified Maui agriculture.',committees:[6,13,2]},
     {title:'Maui Workforce Housing Emergency Act',desc:'Emergency funding for affordable housing for Maui\'s workforce.',committees:[8,16,0]},
     {title:'Molokai Community Sustainability Program',desc:'Economic development and social services tailored to Molokai\'s unique needs.',committees:[14,11,0]},
@@ -711,13 +711,13 @@ const DISTRICT_BILLS={
     {title:'Big Island Water Security Act',desc:'Address aging water infrastructure across rural Hawaiʻi Island.',committees:[13,9,0]},
     {title:'Native Hawaiian Sacred Sites Protection Act',desc:'Strengthen legal protections for culturally and spiritually significant sites.',committees:[15,13,2]},
     {title:"Hawaiʻi Island Schools and Library Act",desc:'Fund construction of new schools and a library for underserved communities.',committees:[3,8,0]},
-    {title:'Kona-Kohala Sustainable Tourism Act',desc:'Develop responsible, sustainable tourism in the Kona and Kohala coasts.',committees:[14,7,1]},
+    {title:'Kona-Kohala Sustainable Tourism Act',desc:'Develop responsible, sustainable tourism in the Kona and Kohala coasts.',committees:[17,7,1]},
   ],
   'kauai':[
     {title:"Nā Pali Coast Conservation Act",desc:'Expand legal protections for the Nā Pali Coast and surrounding watershed.',committees:[13,7,2]},
     {title:'Kauai Agricultural Diversification Fund',desc:'Support small farms and new crops to diversify the Kauai economy.',committees:[6,14,0]},
     {title:'Kauai Workforce Housing Initiative',desc:'Fund affordable housing for Kauai workers priced out of the market.',committees:[8,16,0]},
-    {title:'Sustainable Tourism Management Act',desc:'Manage visitor numbers and fund community infrastructure for tourism impacts.',committees:[14,13,1]},
+    {title:'Sustainable Tourism Management Act',desc:'Manage visitor numbers and fund community infrastructure for tourism impacts.',committees:[17,13,1]},
     {title:'Kauai Hurricane Preparedness Fund',desc:'Harden infrastructure and improve emergency preparedness for hurricane season.',committees:[12,9,0]},
     {title:'Waimea Valley Cultural Preservation',desc:'Preserve the historical and ecological significance of Waimea Valley.',committees:[15,13,2]},
     {title:'Kauai Health Services Expansion Act',desc:'Expand Wilcox Medical Center capacity and rural health access.',committees:[10,11,0]},
@@ -1438,12 +1438,13 @@ function hostPauHana(){
   // Sort reps: allies/friendlies first, then by name
   const sorted=[...G.reps].sort((a,b)=>b.disposition-a.disposition);
   const partyBg=p=>p==='D'?'#2c5fa0':'#a03020';
-  showModal('🌺 Host Pau Hana','Choose up to 5 colleagues to invite for an after-work gathering',()=>`
+  const phMax=calcCapital(G.player);
+  showModal('🌺 Host Pau Hana',`Choose up to ${phMax} colleagues to invite for an after-work gathering`,()=>`
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">
       Allies and friendly members are more likely to show up. Those who attend will feel closer to you.
-      Select up to 5 guests — cost is <strong style="color:var(--accent)">2 CP</strong> regardless of attendance.
+      Select up to <strong style="color:var(--accent)">${phMax} guests</strong> — cost is <strong style="color:var(--accent)">2 CP</strong> regardless of attendance.
     </div>
-    <div id="ph-count-lbl" style="font-size:11px;color:var(--accent);margin-bottom:8px;font-weight:600">0 / 5 selected</div>
+    <div id="ph-count-lbl" style="font-size:11px;color:var(--accent);margin-bottom:8px;font-weight:600">0 / ${phMax} selected</div>
     <div id="ph-list" style="max-height:320px;overflow-y:auto">
       ${sorted.map(r=>`
         <label class="ph-inv-row">
@@ -1454,12 +1455,12 @@ function hostPauHana(){
         </label>
       `).join('')}
     </div>
-    <div id="ph-warn" style="display:none;color:#e74c3c;font-size:11px;text-align:center;margin-top:6px">Select at least 1 and no more than 5 guests.</div>
+    <div id="ph-warn" style="display:none;color:#e74c3c;font-size:11px;text-align:center;margin-top:6px">Select at least 1 and no more than ${phMax} guests.</div>
   `);
   document.getElementById('mok').textContent='Host Pau Hana →';
   document.getElementById('mok').onclick=()=>{
     const checked=[...document.querySelectorAll('.ph-cb:checked')];
-    if(!checked.length||checked.length>5){document.getElementById('ph-warn').style.display='block';return;}
+    if(!checked.length||checked.length>phMax){document.getElementById('ph-warn').style.display='block';return;}
     closeModal();
     resolvePauHana(checked.map(cb=>parseInt(cb.dataset.id)));
   };
@@ -1467,10 +1468,11 @@ function hostPauHana(){
 // Live counter so player sees selection count update in real time
 function phCountUpdate(){
   const n=document.querySelectorAll('.ph-cb:checked').length;
+  const max=calcCapital(G.player);
   const lbl=document.getElementById('ph-count-lbl');
-  if(lbl)lbl.textContent=`${n} / 5 selected`;
-  // Prevent selecting more than 5
-  if(n>=5){
+  if(lbl)lbl.textContent=`${n} / ${max} selected`;
+  // Prevent selecting more than max
+  if(n>=max){
     document.querySelectorAll('.ph-cb:not(:checked)').forEach(cb=>{cb.disabled=true;cb.closest('label').style.opacity='.4';});
   } else {
     document.querySelectorAll('.ph-cb').forEach(cb=>{cb.disabled=false;cb.closest('label').style.opacity='1';});
@@ -1915,17 +1917,88 @@ function runElection(){
 
 // ===== EVENTS =====
 function addEvent(text){G.events.unshift({text,date:`${MONTHS[G.month-1].slice(0,3)} ${G.year}`});if(G.events.length>100)G.events.pop();}
-function npcEvents(){
-  const fns=[
-    ()=>{const r=pick(G.reps);return`Rep. ${r.last} (${distName(r.district)}) was seen meeting with lobbyists.`;},
-    ()=>{const ch=G.reps.filter(r=>r.pos&&r.pos.startsWith('chair-'));if(!ch.length)return null;const r=pick(ch);return`${posLabel(r.pos)}, Rep. ${r.last}, convened a working group.`;},
-    ()=>{const r=pick(G.reps);return`Rep. ${r.last} held a fundraiser, raising ~${fmtMoney(rng(5,30)*1000)}.`;},
-    ()=>`The ${pick(COMMITTEES)} committee held a briefing this month.`,
-    ()=>{const spk=G.reps.find(r=>r.pos==='speaker');if(!spk)return null;return`Speaker ${spk.last} signaled priorities: ${pick(['affordable housing','climate resilience','tourism policy','education funding','infrastructure'])}.`;},
-    ()=>{const r=pick(G.reps);return`Rep. ${r.last} (${distName(r.district)}) was seen meeting with colleagues in the Capitol rotunda.`;},
-    ()=>{const f=pick(G.factions);if(!f)return null;const l=G.reps.find(r=>r.id===f.leaderId);if(!l)return null;return`The ${f.name} (Rep. ${l.last}) has ${f.members.length} members.`;},
+function generateRumors(){
+  const rumors=[];
+  const all=G.reps;
+  const veterans=G.reps.filter(r=>r.seniority>=4);
+  const factionLeaders=G.factions.map(f=>G.reps.find(r=>r.id===f.leaderId)).filter(Boolean);
+  const introduced=G.reps.filter(r=>r.introduced);
+  const pool=[
+    // Retirement signal
+    ()=>{
+      const r=pick(veterans.length?veterans:all);if(!r)return null;
+      const serious=Math.random()<0.35;
+      if(serious&&r.factionId){const f=G.factions.find(x=>x.id===r.factionId);if(f)f.members.filter(id=>id!==r.id).slice(0,2).forEach(id=>{const m=G.reps.find(x=>x.id===id);if(m)m.disposition=Math.max(20,m.disposition-5);});}
+      return serious
+        ?`🗣 Rep. ${r.last} (${distName(r.district)}, ${r.seniority} terms) has been telling close colleagues they likely won't seek re-election. Their faction is already quietly unsettled — some members are looking for a new political home.`
+        :`🗣 Word in the Capitol: Rep. ${r.last} is "weighing options outside the House." Nothing confirmed, but several colleagues are paying attention.`;
+    },
+    // Brewing personal scandal
+    ()=>{
+      const r=pick(all);if(!r)return null;
+      const escalates=Math.random()<0.3;
+      if(escalates){r.disposition=Math.max(15,r.disposition-12);r.powerMod=(r.powerMod||0)-10;}
+      const type=pick(['unreported campaign contributions','a series of unexplained absences','a heated confrontation with a lobbyist that was overheard','expense account discrepancies','allegations surfacing from a former staffer']);
+      return escalates
+        ?`⚠ A story about Rep. ${r.last} involving ${type} is gaining traction in the press — colleagues are already keeping their distance.`
+        :`🗣 Quiet buzz about Rep. ${r.last}: ${type}. Nothing public yet, but the Capitol grapevine is active.`;
+    },
+    // Faction internal tensions
+    ()=>{
+      const f=pick(G.factions.filter(x=>x.members.length>=4));if(!f)return null;
+      const dissenter=pick(G.reps.filter(r=>r.factionId===f.id&&r.id!==f.leaderId));if(!dissenter)return null;
+      const issue=pick(['a controversial floor vote','leadership style','committee assignment disputes','the faction\'s ideological drift','a rumored backroom deal with the other caucus']);
+      dissenter.disposition=Math.max(18,dissenter.disposition-8);
+      return `🗣 Rep. ${dissenter.last} is visibly frustrated with the ${f.name} over ${issue}. Sources say they've been quietly "shopping around" for a new political home — they may be recruitable.`;
+    },
+    // Warchest vulnerability
+    ()=>{
+      const weak=G.reps.filter(r=>r.warchest<20000&&r.seniority<4);
+      const r=pick(weak.length?weak:G.reps.filter(r=>r.warchest<30000));if(!r)return null;
+      return `🗣 Rep. ${r.last} (${distName(r.district)}) is reportedly well below average on fundraising — well under the median warchest. Political operatives in their district are already making calls about a potential challenger.`;
+    },
+    // Speakership ambition
+    ()=>{
+      const r=pick(factionLeaders.filter(x=>x.pos!=='speaker'));if(!r)return null;
+      const f=G.factions.find(x=>x.leaderId===r.id);
+      return `🗣 Sources say Rep. ${r.last}'s team is quietly taking stock of potential floor support — the word "speakership" has come up more than once in private conversations. The ${f?.name||''} currently has ${f?.members.length||0} members.`;
+    },
+    // Alliance forming
+    ()=>{
+      const r1=pick(factionLeaders);if(!r1)return null;
+      const r2=pick(factionLeaders.filter(r=>r.id!==r1.id&&r.party===r1.party));if(!r2)return null;
+      const deepening=Math.random()<0.25;
+      if(deepening){r1.disposition=Math.min(100,r1.disposition+5);r2.disposition=Math.min(100,r2.disposition+5);}
+      return deepening
+        ?`🗣 Reps. ${r1.last} and ${r2.last} have been meeting privately multiple times this month — Capitol insiders say a formal alliance between their factions may be taking shape.`
+        :`🗣 Reps. ${r1.last} and ${r2.last} were seen having lunch together at the Capitol Café. No comment from either office, but the timing is notable.`;
+    },
+    // District trouble for another rep
+    ()=>{
+      const r=pick(all);if(!r)return null;
+      const trouble=pick(['backlash over their recent vote on housing funding','a viral clip from a contentious town hall','a pointed op-ed in their local paper','constituent complaints about unresponsive constituent services','a local political committee endorsing a potential challenger']);
+      return `🗣 Rep. ${r.last} is dealing with ${trouble} back in ${distName(r.district)}. Some political observers say their district approval may be slipping.`;
+    },
+    // Speaker power move
+    ()=>{
+      const spk=G.reps.find(r=>r.pos==='speaker');if(!spk)return null;
+      const move=pick(['reassigning committee chairs without notice','blocking a floor vote on a popular bill','calling in long-standing favors ahead of a contentious vote','quietly threatening to back a primary challenger against a disloyal member','cutting a faction off from key committee assignments']);
+      return `🗣 Speaker ${spk.last} has been reportedly ${move}. A quiet reminder that the gavel still controls the floor — and the careers that depend on it.`;
+    },
+    // Positive word about player spreading
+    ()=>{
+      const r=pick(introduced);if(!r)return null;
+      r.disposition=Math.min(100,r.disposition+5);
+      const item=pick(['praised your constituent outreach at a caucus breakfast','mentioned your name favorably in a conversation with leadership','been telling colleagues you\'re someone worth knowing','quietly advocated for you in a committee discussion']);
+      return `🗣 Word has it that Rep. ${r.last} has ${item}. These things have a way of mattering more than people think.`;
+    },
   ];
-  const evts=[];for(let i=0;i<rng(1,2);i++){const t=pick(fns)();if(t)evts.push(t);}return evts;
+  const shuffled=[...pool].sort(()=>Math.random()-0.5);
+  for(const fn of shuffled){
+    if(rumors.length>=rng(1,2))break;
+    const t=fn();if(t)rumors.push(t);
+  }
+  return rumors;
 }
 
 function buildElectionBarGraph(playerPct,chalPct,playerName,chalName,playerParty,chalParty,raceTitle){
@@ -2091,12 +2164,12 @@ function resolveBill(){
 // ===== TURN =====
 function endTurn(){
   if(G.gameOver||G.gameWon)return;
-  const summary=[];
   const polEvt=Math.random()<.3?politicalEventFire():null;
-  if(polEvt)summary.push(polEvt);
-  npcEvents().forEach(e=>{addEvent(e);summary.push(e);});
+  if(polEvt)addEvent(polEvt);
+  const npcEvtList=generateRumors();
+  npcEvtList.forEach(e=>addEvent(e));
   const factionTurn=npcFactionTurn();
-  factionTurn.evts.forEach(e=>{addEvent(e);summary.push(e);});
+  factionTurn.evts.forEach(e=>addEvent(e));
   G._departures=factionTurn.departures;
   if(G.speakerRace?.active)speakerRaceNPC();
   G.reps.forEach(r=>{
@@ -2129,7 +2202,6 @@ function endTurn(){
     generateElectionDeclarations();
     G.endorsements={};
     addEvent(`${G.year} is an election year. Challengers may file against your district seat through June.`);
-    summary.push(`${G.year} election year begins. Watch for opponents filing in your district through June.`);
   }
   // Fire any scheduled NPC declarations (Jan–Jun of election years)
   let firedDecs=[];
@@ -2139,14 +2211,13 @@ function endTurn(){
       const v=d.viability;const ch=d.challenger;
       const raceStr=d.electionType==='primary'?`${G.player.party==='D'?'Democratic':'Republican'} primary`:'general election';
       addEvent(`${ch.first} ${ch.last} files for the ${G.year} ${raceStr} in ${distName(G.player.district)} — ${v.level}.`);
-      summary.push(`⚠ ${ch.first} ${ch.last} enters the ${raceStr} against you (${v.level})`);
     });
   }
   // Monthly challenger evolution (Jan–Oct of election years, for declared+active challengers)
   let chalMsgs=[];
   if(G.year>=2028&&G.year%2===0&&G.month>=1&&G.month<=10){
     chalMsgs=updateChallengerMonthly();
-    chalMsgs.forEach(m=>{addEvent(m);summary.push(m);});
+    chalMsgs.forEach(m=>addEvent(m));
   }
   // Legislation result — May of every year
   let billResult=null;
@@ -2177,15 +2248,8 @@ function endTurn(){
     elEvts=runElection();
     generalResult=checkPlayerReelection();
     addEvent(generalResult.msg);elEvts.push(generalResult.msg);
-    if(!generalResult.won){
-      G.gameOver=true;
-      elEvts.forEach(e=>addEvent(e));
-      setTimeout(()=>showEndScreen(false,0,null,'reelection'),400);
-    } else {
-      elEvts.forEach(e=>addEvent(e));
-      summary.push(...elEvts);
-      summary.push(`✓ Reelection secured — seniority now ${G.player.seniority} term${G.player.seniority>1?'s':''}.`);
-    }
+    elEvts.forEach(e=>addEvent(e));
+    if(!generalResult.won) G.gameOver=true;
   }
   // Init speaker race in December of election years
   if(G.month===12&&G.year>=2028&&G.year%2===0&&!G.speakerRace){
@@ -2249,65 +2313,82 @@ function endTurn(){
   }
   const activeDecs=(G.elecDeclarations||[]).filter(d=>d.fired);
   const existingActives=activeDecs.filter(d=>!firedDecs.includes(d)&&!d.eliminated);
-  const monthLabel=primaryResult?'Primary Election':generalResult?'General Election':'This Month';
-  function showSummary(){showModal(`${MONTHS[G.month-1]} ${G.year}`,`${getPhase(G.month)} · ${G.player.capital} capital`,()=>`
-    ${deps.length?deptChartHTML(deps):''}
-    ${G.month===1?`<div class="msec"><h3>📋 New Session Opens</h3>
-      ${G.player.pos?`<div class="mev">Your role this session: <strong>${posLabel(G.player.pos)}</strong></div>`:
-      `<div class="mev" style="color:var(--muted);font-style:italic">You hold no committee seat this session. Lobby a chair next December to secure one.</div>`}
-      <div class="mev">Faction: <strong>${G.playerFaction?G.playerFaction.name+' ('+G.playerFaction.members.length+' members)':'None'}</strong></div>
-      <div class="mev">Power: <strong>${calcPower(G.player)}/100</strong> &nbsp;·&nbsp; Allies: <strong>${G.reps.filter(r=>dispId(r.disposition)==='ally').length}</strong> &nbsp;·&nbsp; Friendly: <strong>${G.reps.filter(r=>dispId(r.disposition)==='friendly').length}</strong></div>
-      <div class="mev">Warchest: <strong>${fmtMoney(G.player.warchest)}</strong> &nbsp;·&nbsp; District approval: <strong>${Math.round(G.districtApproval)}%</strong></div>
-    </div>`:''}
-    ${primaryResult&&!primaryResult.unopposed?`<div class="msec">
-      <h3 style="color:${primaryResult.won?'var(--ally)':'var(--hostile)'}">${primaryResult.won?'✓':'✗'} August ${G.year} — ${G.player.party==='D'?'Democratic':'Republican'} Primary</h3>
-      ${buildElectionBarGraph(primaryResult.playerPct,primaryResult.chalPct,
-        `Rep. ${G.player.last}`,`${primaryResult.ch.first} ${primaryResult.ch.last}`,
-        G.player.party,primaryResult.ch.party,
-        `${G.year} ${G.player.party==='D'?'Democratic':'Republican'} Primary`)}
-      <div class="mev" style="color:var(--muted);font-size:10px">Your warchest: ${fmtMoney(G.player.warchest)} · Their warchest: ${fmtMoney(primaryResult.ch.warchest)} · Incumbent odds: ${primaryResult.playerChance}%</div>
-      ${primaryResult.won?`<div class="mev" style="color:var(--ally)">Advancing to the November general election.</div>`:`<div class="mev" style="color:var(--hostile)">Your legislative career has ended.</div>`}
-    </div>`:''}
-    ${primaryResult?.unopposed?`<div class="msec"><div class="mev" style="color:var(--ally)">✓ Unopposed in the ${G.year} primary — advancing to the general election in November.</div></div>`:''}
-    ${billResult?`<div class="bill-result-card ${billResult.passed?'passed':'failed'}">
-      <h3 style="color:${billResult.passed?'var(--ally)':'var(--hostile)'};">${billResult.passed?'✓ Bill Passed':'✗ Bill Failed'}: ${billResult.bill.title}</h3>
-      <div class="mev">${billResult.passed?`District approval +10%. Your constituents in ${distName(G.player.district)} took notice.`:`The bill did not clear committee. It may be reintroduced in a future session.`}</div>
-      <div class="mev" style="font-size:10px;color:var(--muted)">Committees lobbied: ${billResult.count}/3 &nbsp;·&nbsp; Final passage chance: ${Math.round((0.03+billResult.count*(17/300))*100)}%</div>
-    </div>`:''}
-    ${generalResult?`<div class="msec">
-      <h3 style="color:${generalResult.won?'var(--ally)':'var(--hostile)'}">${generalResult.won?'✓':'✗'} November ${G.year} — General Election</h3>
-      ${buildElectionBarGraph(generalResult.playerPct,generalResult.chalPct,
-        `Rep. ${G.player.last}`,
-        generalResult.ch?`${generalResult.ch.first} ${generalResult.ch.last}`:'Opponent',
-        G.player.party,generalResult.ch?generalResult.ch.party:(G.player.party==='D'?'R':'D'),
-        `${G.year} General Election`)}
-      <div class="mev" style="color:var(--muted);font-size:10px">District approval: ${Math.round(G.districtApproval)}% · Seniority: ${G.player.seniority} term${G.player.seniority>1?'s':''}</div>
-    </div>`:''}
-    ${summary.length?`<div class="msec"><h3>${monthLabel}</h3>${summary.map(e=>`<div class="mev">${e}</div>`).join('')}</div>`:''}
-    ${firedDecs.length?firedDecs.map(d=>{const ch=d.challenger;const v=d.viability;const rStr=d.electionType==='primary'?`${G.player.party==='D'?'Democratic':'Republican'} Primary`:'General Election';return`
-      <div class="msec" style="border-left:3px solid ${v.color};padding-left:10px;margin-left:0">
-        <h3 style="color:${v.color}">⚠ ${ch.first} ${ch.last} — ${rStr} Challenger</h3>
-        <div class="mev" style="line-height:1.6">${d.bio}</div>
-        <div class="mev" style="margin-top:7px"><strong style="color:${v.color}">Threat Level: ${v.level}</strong> &nbsp;·&nbsp; Starting warchest: ${fmtMoney(ch.warchest)}</div>
-        <div class="mev" style="color:var(--muted);font-style:italic">${v.assessment}</div>
-      </div>`;}).join(''):''}
-    ${existingActives.length&&G.month>=2&&G.month<=10?existingActives.map(d=>chalStatusCard(d)).join(''):''}
-    <div class="msec"><h3>Standing</h3>
-      <div class="erow"><span>Representatives</span><strong>50 members</strong></div>
-      <div class="erow"><span>Friendly or allied</span><strong>${allies}</strong></div>
-      ${G.playerFaction?`<div class="erow"><span>${G.playerFaction.name}</span><strong>${pfSize} members</strong></div>`:''}
-      <div class="erow"><span>Warchest</span><strong>${fmtMoney(G.player.warchest)}</strong></div>
-      <div class="erow"><span>District approval</span><strong>${Math.round(G.districtApproval)}%</strong></div>
-      ${!G.milestone2?`<div class="mev" style="font-style:italic;color:var(--muted);margin-top:6px">M2: ${pfSize}/8 faction · ${G.player.pos?'✓ position':'no position'} · ${G.player.warchest>=100000?'✓':''}$100K</div>`:
-      !G.gameWon?`<div class="mev" style="font-style:italic;color:var(--muted);margin-top:6px">Speaker race: declare in December after next election with 8+ members</div>`:''}
-    </div>`);
-  // After modal: trigger end screen for election losses
-  if(primaryResult&&!primaryResult.won){
-    document.getElementById('mok').onclick=()=>{closeModal();showEndScreen(false,0,null,'reelection');};
-  } else if(generalResult&&!generalResult.won){
-    document.getElementById('mok').onclick=()=>{closeModal();showEndScreen(false,0,null,'reelection');};
-  }
-  render();
+  function showSummary(){
+    const mTitle=`${MONTHS[G.month-1]} ${G.year}`;
+    const mSub=`${getPhase(G.month)} · ${G.player.capital} CP`;
+    const cards=[];
+    // January session opener
+    if(G.month===1){
+      cards.push({title:`January ${G.year} — New Session`,sub:'The Hawaii House reconvenes',html:`
+        <div class="msec"><h3>📋 Session Opens</h3>
+          ${G.player.pos?`<div class="mev">Your role this session: <strong>${posLabel(G.player.pos)}</strong></div>`:
+          `<div class="mev" style="color:var(--muted);font-style:italic">You hold no committee seat this session. Lobby a chair in December to secure one.</div>`}
+          <div class="mev">Faction: <strong>${G.playerFaction?G.playerFaction.name+' ('+G.playerFaction.members.length+' members)':'None'}</strong></div>
+          <div class="mev">Power: <strong>${calcPower(G.player)}/100</strong> &nbsp;·&nbsp; Allies: <strong>${G.reps.filter(r=>dispId(r.disposition)==='ally').length}</strong> &nbsp;·&nbsp; Friendly: <strong>${G.reps.filter(r=>dispId(r.disposition)==='friendly').length}</strong></div>
+          <div class="mev">Warchest: <strong>${fmtMoney(G.player.warchest)}</strong> &nbsp;·&nbsp; Approval: <strong>${Math.round(G.districtApproval)}%</strong></div>
+        </div>`});
+    }
+    // Political event (if any)
+    if(polEvt) cards.push({title:mTitle,sub:'Political Event',html:`<div class="msec"><div class="mev" style="font-size:13px;line-height:1.7">${polEvt}</div></div>`});
+    // Capitol rumors — one card each
+    npcEvtList.forEach(e=>cards.push({title:mTitle,sub:'Capitol Rumor',html:`<div class="msec"><div class="mev" style="font-size:13px;line-height:1.7">${e}</div></div>`}));
+    // Faction departure
+    if(deps.length) cards.push({title:'⚠ Caucus Departure',sub:mTitle,html:deptChartHTML(deps)});
+    // New challenger declarations — one card each
+    firedDecs.forEach(d=>{
+      const ch=d.challenger;const v=d.viability;
+      const rStr=d.electionType==='primary'?`${G.player.party==='D'?'Democratic':'Republican'} Primary`:'General Election';
+      cards.push({title:`⚠ New Challenger — ${rStr}`,sub:`${G.year} Election`,html:`
+        <div class="msec" style="border-left:3px solid ${v.color};padding-left:10px;margin-left:0">
+          <h3 style="color:${v.color}">${ch.first} ${ch.last}</h3>
+          <div class="mev" style="line-height:1.6">${d.bio}</div>
+          <div class="mev" style="margin-top:7px"><strong style="color:${v.color}">Threat Level: ${v.level}</strong> &nbsp;·&nbsp; Starting warchest: ${fmtMoney(ch.warchest)}</div>
+          <div class="mev" style="color:var(--muted);font-style:italic">${v.assessment}</div>
+        </div>`});
+    });
+    // Active challenger updates — one card per challenger
+    if(existingActives.length&&G.month>=2&&G.month<=10){
+      existingActives.forEach(d=>cards.push({title:'Campaign Update',sub:`${d.electionType==='primary'?'Primary':'General'} Race · ${G.year}`,html:chalStatusCard(d)}));
+    }
+    // Bill result
+    if(billResult) cards.push({title:billResult.passed?'✓ Bill Passed':'✗ Bill Failed',sub:G.year+' Legislative Session',html:`
+      <div class="bill-result-card ${billResult.passed?'passed':'failed'}">
+        <h3 style="color:${billResult.passed?'var(--ally)':'var(--hostile)'};">${billResult.passed?'✓ Passed':'✗ Failed'}: ${billResult.bill.title}</h3>
+        <div class="mev">${billResult.passed?`District approval +10%. Your constituents in ${distName(G.player.district)} took notice.`:`The bill did not advance out of committee. It may be reintroduced in a future session.`}</div>
+        <div class="mev" style="font-size:10px;color:var(--muted)">Committees lobbied: ${billResult.count}/3 &nbsp;·&nbsp; Passage chance: ${Math.round((0.03+billResult.count*(17/300))*100)}%</div>
+      </div>`});
+    // Primary result
+    if(primaryResult&&!primaryResult.unopposed) cards.push({title:`${primaryResult.won?'✓ Primary Victory':'✗ Primary Defeat'}`,sub:`August ${G.year}`,html:`
+      <div class="msec">
+        <h3 style="color:${primaryResult.won?'var(--ally)':'var(--hostile)'}">${G.player.party==='D'?'Democratic':'Republican'} Primary — ${G.year}</h3>
+        ${buildElectionBarGraph(primaryResult.playerPct,primaryResult.chalPct,`Rep. ${G.player.last}`,`${primaryResult.ch.first} ${primaryResult.ch.last}`,G.player.party,primaryResult.ch.party,`${G.year} ${G.player.party==='D'?'Democratic':'Republican'} Primary`)}
+        <div class="mev" style="color:var(--muted);font-size:10px">Your warchest: ${fmtMoney(G.player.warchest)} · Their warchest: ${fmtMoney(primaryResult.ch.warchest)} · Incumbent odds: ${primaryResult.playerChance}%</div>
+        ${primaryResult.won?`<div class="mev" style="color:var(--ally)">Advancing to the November general election.</div>`:`<div class="mev" style="color:var(--hostile)">Your legislative career has ended.</div>`}
+      </div>`});
+    if(primaryResult?.unopposed) cards.push({title:'Unopposed in Primary',sub:`August ${G.year}`,html:`<div class="msec"><div class="mev" style="color:var(--ally);font-size:13px">✓ No challenger filed in the ${G.year} ${G.player.party==='D'?'Democratic':'Republican'} primary. You advance to the general election in November.</div></div>`});
+    // General election result
+    if(generalResult) cards.push({title:`${generalResult.won?'✓ Reelected':'✗ General Election Defeat'}`,sub:`November ${G.year}`,html:`
+      <div class="msec">
+        <h3 style="color:${generalResult.won?'var(--ally)':'var(--hostile)'}">November ${G.year} — General Election</h3>
+        ${buildElectionBarGraph(generalResult.playerPct,generalResult.chalPct,`Rep. ${G.player.last}`,generalResult.ch?`${generalResult.ch.first} ${generalResult.ch.last}`:'Opponent',G.player.party,generalResult.ch?generalResult.ch.party:(G.player.party==='D'?'R':'D'),`${G.year} General Election`)}
+        <div class="mev" style="color:var(--muted);font-size:10px">District approval: ${Math.round(G.districtApproval)}% · Seniority: ${G.player.seniority} term${G.player.seniority>1?'s':''}</div>
+        ${generalResult.won?`<div class="mev" style="color:var(--ally)">Reelection secured — seniority now ${G.player.seniority} term${G.player.seniority>1?'s':''}.</div>`:``}
+      </div>`});
+    // Standing (always last)
+    cards.push({title:mTitle,sub:mSub,html:`
+      <div class="msec"><h3>Your Standing</h3>
+        <div class="erow"><span>Friendly or allied</span><strong>${allies}</strong></div>
+        ${G.playerFaction?`<div class="erow"><span>${G.playerFaction.name}</span><strong>${pfSize} members</strong></div>`:''}
+        <div class="erow"><span>Warchest</span><strong>${fmtMoney(G.player.warchest)}</strong></div>
+        <div class="erow"><span>District approval</span><strong>${Math.round(G.districtApproval)}%</strong></div>
+        <div class="erow"><span>Capital</span><strong>${G.player.capital}</strong></div>
+        ${!G.milestone2?`<div class="mev" style="font-style:italic;color:var(--muted);margin-top:6px">Path: ${pfSize}/8 faction · ${G.player.pos?'✓ position':'no position'} · ${G.player.warchest>=100000?'✓':''}$100K warchest</div>`:
+        !G.gameWon?`<div class="mev" style="font-style:italic;color:var(--muted);margin-top:6px">Speaker race: declare in December after next election with 8+ members</div>`:''}
+      </div>`});
+    render();
+    showCardQueue(cards,()=>{
+      if((primaryResult&&!primaryResult.won)||(generalResult&&!generalResult.won)) showEndScreen(false,0,null,'reelection');
+    });
   }
   if(G.month===1&&(!G.activeBill||G.activeBill.year!==G.year)){render();showLegislationPicker(showSummary);}
   else if(G.month===2&&G.activeBill&&G.activeBill.year===G.year&&G.activeBill.result===null){render();showLobbyModal(showSummary);}
@@ -2454,6 +2535,20 @@ function showEndScreen(won,pledges,rival,lossReasonOrDeals){
   if(won&&dealNotes.length)extra=`<div style="margin-top:12px;font-size:11px;color:var(--muted)"><strong>Appointments honored:</strong><br>${dealNotes.map(d=>`• ${d}`).join('<br>')}</div>`;
   document.getElementById('end-stats').innerHTML=rows.map(([l,v])=>`<div class="end-stat-row"><span>${l}</span><strong>${v}</strong></div>`).join('')+extra;
   document.getElementById('end-overlay').classList.add('active');
+}
+
+// ===== CARD QUEUE — show events one at a time =====
+function showCardQueue(cards,onDone){
+  if(!cards||!cards.length){if(onDone)onDone();return;}
+  let idx=0;
+  function showStep(){
+    const c=cards[idx];
+    const isLast=idx===cards.length-1;
+    showModal(c.title,c.sub||'',()=>c.html);
+    document.getElementById('mok').textContent=isLast?'Done ✓':'Next →';
+    document.getElementById('mok').onclick=()=>{closeModal();idx++;if(idx<cards.length)showStep();else if(onDone)onDone();};
+  }
+  showStep();
 }
 
 // ===== MODAL =====
@@ -3382,18 +3477,51 @@ function startGame(){
   // Give player a handful of starting-friendly colleagues (same party, ideologically close)
   const samePtyReps=G.reps.filter(r=>r.party===G.player.party).sort((a,b)=>Math.abs(a.ideology-G.player.ideology)-Math.abs(b.ideology-G.player.ideology));
   samePtyReps.slice(0,rng(4,6)).forEach(r=>{r.disposition=rng(62,74);});
+  // Assign player a starting Vice Chair if they are in the majority party
+  {
+    const dCnt=G.reps.filter(r=>r.party==='D').length;
+    const rCnt=G.reps.filter(r=>r.party==='R').length;
+    if(G.player.party===(dCnt>=rCnt?'D':'R')){
+      const taken=new Set(G.reps.filter(r=>r.pos&&r.pos.startsWith('vc-')).map(r=>parseInt(r.pos.split('-')[1])));
+      const free=COMMITTEES.map((_,i)=>i).filter(i=>!taken.has(i));
+      const pref=free.filter(i=>i>2);
+      if(pref.length){
+        G.player.pos='vc-'+pick(pref);
+      } else if(free.length){
+        G.player.pos='vc-'+pick(free);
+      } else {
+        // All VC slots filled — displace the least-senior NPC holder of a minor committee VC
+        const minorVCs=G.reps.filter(r=>r.pos&&r.pos.startsWith('vc-')&&parseInt(r.pos.split('-')[1])>2);
+        if(minorVCs.length){
+          const victim=minorVCs.sort((a,b)=>a.seniority-b.seniority)[0];
+          G.player.pos=victim.pos;
+          victim.pos=null;
+        }
+      }
+    }
+  }
   bgmInit();
   addEvent(`Welcome to the Hawaii House, Rep. ${last}. First session opens in January. ${G.factions.length} factions have organized.`);
   addEvent(`Your district approval in ${distName(G.player.district)} starts at ${Math.round(G.districtApproval)}%. Keep it high for reelection.`);
   render();
-  showModal(`November — Year 1`,`Pre-Session · 5 capital available`,()=>`
-    <div class="msec"><h3>Welcome, Rep. ${last}</h3>
-      <div class="mev">You won your first election in ${distName(G.player.district)}. Session runs January–May.</div>
-      <div class="mev">${G.factions.length} factions are already organized. Build your relationships before founding your own.</div>
-      <div class="mev"><strong>Milestone 1:</strong> 5 friendly/allied members by end of May, Year 1.</div>
-      <div class="mev"><strong>Milestone 2:</strong> Found a faction (8+ members), secure a committee position, build $100K+ warchest by end of Year 2.</div>
-      <div class="mev"><strong>Milestone 3 / Win:</strong> Secure 26 pledges and win the Speaker floor vote in December of an election year.</div>
-      <div class="mev"><strong>Watch:</strong> District approval above 60% guarantees reelection. Below 60% is risky.</div>
+  showModal(`November ${G.year} — Welcome to the Hawaii State House`,`Your journey begins`,()=>`
+    <div class="msec">
+      <h3 style="font-size:17px;color:var(--accent);margin-bottom:10px">🌺 Aloha, Rep. ${last}!</h3>
+      <div class="mev" style="font-size:13px;line-height:1.6">
+        You've just won your seat in the <strong>Hawaii State House of Representatives</strong> — congratulations! The halls of the Capitol are yours to navigate, and the possibilities are endless.
+      </div>
+      <div class="mev" style="font-size:13px;line-height:1.6;margin-top:8px">
+        This is your story of ambition, alliance, and aloha spirit. From a freshman legislator in <strong>${distName(G.player.district)}</strong>, you'll climb the ranks — building friendships, forging a faction, chairing committees, and earning the trust of your colleagues — all in pursuit of the most powerful gavel in the state:
+      </div>
+      <div class="mev" style="text-align:center;font-size:15px;font-weight:700;color:var(--accent);margin:14px 0 10px;letter-spacing:.03em">
+        🏛️ Speaker of the Hawaii House 🏛️
+      </div>
+      <div class="mev" style="font-size:12px;color:var(--muted);line-height:1.6">
+        ${G.factions.length} factions have already organized on the floor. The session opens in January — use the time wisely. Every relationship you build, every vote you earn, and every dollar in your warchest brings you one step closer to that Speaker's gavel.
+      </div>
+      <div class="mev" style="font-size:12px;font-style:italic;color:var(--friendly);margin-top:10px">
+        Your district is counting on you. Your colleagues are watching. The gavel is waiting. Let's get to work.
+      </div>
     </div>`);
 }
 
