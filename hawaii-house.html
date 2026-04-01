@@ -38,12 +38,6 @@ body{
 #end-btn:hover{background:#d8b030;box-shadow:0 0 18px var(--accent-glow);}
 #end-btn:disabled{opacity:.35;cursor:not-allowed;box-shadow:none;}
 
-/* BANNERS */
-#banner{display:none;color:white;text-align:center;padding:7px 20px;font-size:11px;font-weight:600;flex-shrink:0;letter-spacing:.04em;}
-#banner.m1{background:linear-gradient(to right,#1a5c3a,var(--ally),#1a5c3a);display:block;animation:bannerIn .35s ease;}
-#banner.m2{background:linear-gradient(to right,#183560,#285aa0,#183560);display:block;animation:bannerIn .35s ease;}
-#banner.m3{background:linear-gradient(to right,#3a1460,#7030a0,#3a1460);display:block;animation:bannerIn .35s ease;}
-@keyframes bannerIn{from{opacity:0;transform:translateY(-100%)}to{opacity:1;transform:translateY(0)}}
 
 /* RACE BAR */
 #race-bar{display:none;background:linear-gradient(to bottom,#0f1e30,#0c1a28);border-bottom:1px solid var(--border);color:var(--text);padding:7px 20px;flex-shrink:0;gap:28px;align-items:center;font-size:11px;}
@@ -397,7 +391,6 @@ body{
   <div id="legend"></div>
 </div>
 <div id="endorse-panel"></div>
-<div id="banner"></div>
 
 <div id="race-bar">
   <span class="rb-label">Speaker Race</span>
@@ -777,7 +770,6 @@ let G={
   player:null,reps:[],events:[],
   factions:[],playerFaction:null,
   viewMode:'disposition',selected:null,
-  milestone1:false,milestone2:false,
   speakerRace:null,         // {active,declared,candidates:[{factionId,leaderName,pledges:[]}]}
   pledgeDeals:[],           // [{repId, type, detail}] — promises made to secure pledges
   districtApproval:60,
@@ -938,22 +930,42 @@ function genChallengeViability(ch,approval,playerWarchest){
 function generateElectionDeclarations(){
   G.elecDeclarations=[];
   const dist=distName(G.player.district);
-  // Primary challenger (same party) — declares Feb–Apr; all challengers start ≤$10k
-  const pc=genRep(9001,G.player.district);
-  pc.party=G.player.party;pc.electionType='primary';
-  pc.warchest=rng(2,10)*1000;
-  G.elecDeclarations.push({electionType:'primary',challenger:pc,declMonth:rng(2,4),
-    bio:genChallengeBio(pc,G.player.first,G.player.last,dist),
-    viability:genChallengeViability(pc,G.districtApproval,G.player.warchest),fired:false,eliminated:false});
-  // General election opponent (opposite party) — declares Jan–Mar
-  const gc=genRep(9002,G.player.district);
-  gc.party=G.player.party==='D'?'R':'D';gc.electionType='general';
-  // Republican challengers in Democrat-dominant districts start with less money — harder to fundraise
-  const isRepInStronghold=gc.party==='R'&&DEM_STRONGHOLDS.includes(G.player.district);
-  gc.warchest=isRepInStronghold?rng(1,4)*1000:rng(3,10)*1000;
-  G.elecDeclarations.push({electionType:'general',challenger:gc,declMonth:rng(1,3),
-    bio:genChallengeBio(gc,G.player.first,G.player.last,dist),
-    viability:genChallengeViability(gc,G.districtApproval,G.player.warchest),fired:false,eliminated:false});
+  // Challenger pressure: low approval, low power, small warchest all attract challengers
+  const approvalPressure=Math.max(0,Math.min(1,(65-G.districtApproval)/55));
+  const powerFactor=Math.max(0,1-calcPower(G.player)/70);
+  const warchestFactor=Math.max(0,1-G.player.warchest/250000);
+  const pressure=Math.max(0.05,Math.min(0.95,approvalPressure*0.5+powerFactor*0.3+warchestFactor*0.2));
+  let idBase=9001;
+  // Primary challengers (same party) — base 38%-77% chance depending on pressure
+  const primaryChance=0.35+pressure*0.45;
+  if(Math.random()<primaryChance){
+    const pc=genRep(idBase++,G.player.district);
+    pc.party=G.player.party;pc.electionType='primary';
+    pc.warchest=rng(2,10)*1000;
+    G.elecDeclarations.push({electionType:'primary',challenger:pc,declMonth:rng(2,4),
+      bio:genChallengeBio(pc,G.player.first,G.player.last,dist),
+      viability:genChallengeViability(pc,G.districtApproval,G.player.warchest),fired:false,eliminated:false});
+    // Second primary challenger — more likely when district is volatile
+    if(Math.random()<pressure*0.32){
+      const pc2=genRep(idBase++,G.player.district);
+      pc2.party=G.player.party;pc2.electionType='primary';
+      pc2.warchest=rng(1,7)*1000;
+      G.elecDeclarations.push({electionType:'primary',challenger:pc2,declMonth:rng(2,5),
+        bio:genChallengeBio(pc2,G.player.first,G.player.last,dist),
+        viability:genChallengeViability(pc2,G.districtApproval,G.player.warchest),fired:false,eliminated:false});
+    }
+  }
+  // General election challenger (opposite party) — base 62%-95% chance
+  const isRepInStronghold=G.player.party==='D'&&DEM_STRONGHOLDS.includes(G.player.district);
+  const generalChance=isRepInStronghold?0.88:0.60+pressure*0.35;
+  if(Math.random()<generalChance){
+    const gc=genRep(idBase++,G.player.district);
+    gc.party=G.player.party==='D'?'R':'D';gc.electionType='general';
+    gc.warchest=isRepInStronghold?rng(1,4)*1000:rng(3,10)*1000;
+    G.elecDeclarations.push({electionType:'general',challenger:gc,declMonth:rng(1,3),
+      bio:genChallengeBio(gc,G.player.first,G.player.last,dist),
+      viability:genChallengeViability(gc,G.districtApproval,G.player.warchest),fired:false,eliminated:false});
+  }
 }
 function getPledgeColor(rep){
   if(!rep.pledge)return'#7a7a8a';
@@ -1106,26 +1118,7 @@ const ACTIONS=[
   {id:'committee-maneuver',label:'Committee Maneuver',cost:3,needsIntro:true,hideAfterIntro:false,phase:'any',requiresPlayerPos:true,desc:'Use your committee position to advance their priorities.',
    do(rep){if(!G.player.pos){addEvent('You need a committee position first.');return false;}const b=Math.round(affinity(G.player,rep)*6)+8;rep.disposition=Math.min(100,rep.disposition+b);const opp=G.reps.filter(r=>r.introduced&&r.ideology>rep.ideology+20);opp.slice(0,2).forEach(r=>r.disposition=Math.max(0,r.disposition-4));rep.log.push({m:G.month,y:G.year,text:`You advanced their priorities in committee.`});addEvent(`You used your committee position to advance Rep. ${rep.last}'s priorities.${opp.length?` Rep. ${opp[0].last} and others were not pleased.`:''}`);}},
   {id:'recruit',label:'Recruit to Your Faction',cost:3,needsIntro:true,hideAfterIntro:false,phase:'any',requiresFaction:true,requiresDisp:60,desc:'Formally invite them into your faction. Requires Ally for a real chance; Friendly is a long shot.',
-   do(rep){
-     if(!G.playerFaction){addEvent('Found a faction first.');return false;}
-     if(rep.party!==G.player.party){addEvent(`Rep. ${rep.last} is a ${rep.party==='D'?'Democrat':'Republican'} — factions cannot cross party lines.`);return false;}
-     if(rep.disposition<60){addEvent('You need a stronger relationship first.');return false;}
-     if(isInPlayerFaction(rep.id)){addEvent('Already in your faction.');return false;}
-     const isAlly=rep.disposition>=80;
-     const inOtherFaction=!!rep.factionId;
-     // Near-impossible for friendlies; moderate for allies; existing faction members are harder
-     let chance=isAlly?(inOtherFaction?0.22:0.50):(inOtherFaction?0.03:0.07);
-     chance=Math.min(chance+affinity(G.player,rep)*0.12,isAlly?0.78:0.15);
-     if(Math.random()>chance){
-       addEvent(isAlly?`Rep. ${rep.last} respects the offer but isn't ready to commit${inOtherFaction?' — leaving their current faction is a big step':''}.`:
-         `Rep. ${rep.last} is flattered but won't commit. Build to Ally status first.`);
-       return false;
-     }
-     if(rep.factionId){const old=G.factions.find(f=>f.id===rep.factionId);if(old)old.members=old.members.filter(id=>id!==rep.id);}
-     rep.factionId='player';rep.joinedFactionTurn=G.careerStats.turns;G.playerFaction.members.push(rep.id);
-     rep.log.push({m:G.month,y:G.year,text:'Joined your faction.'});
-     addEvent(`Rep. ${rep.last} joined the ${G.playerFaction.name}. (${G.playerFaction.members.length} members)`);
-   }},
+   do(rep){return true;}},  // handled by doRecruitAction
   {id:'join-caucus',label:'Request to Join Their Faction',cost:2,needsIntro:true,hideAfterIntro:false,phase:'any',requiresFactionLeader:true,desc:'Dissolve your faction and merge into theirs.',
    do(rep){
      const f=G.factions.find(f=>f.leaderId===rep.id);
@@ -1149,7 +1142,7 @@ const ACTIONS=[
   {id:'secure-pledge',label:'Secure Their Pledge',cost:2,needsIntro:true,hideAfterIntro:false,phase:'raceActive',requiresNoPledge:true,desc:'Ask for their pledge in the Speaker election (with optional deal).',
    do(rep,dealType,dealDetail){
      if(!G.speakerRace?.active){addEvent('No active speaker race.');return false;}
-     if(!G.speakerRace.declared){G.speakerRace.declared=true;G.careerStats.speakerAttempts++;addEvent('You entered the Speaker race.');setView('pledges');}
+     if(!G.speakerRace.declared){G.speakerRace.declared=true;G.careerStats.speakerAttempts++;const initPl=G.playerFaction?.members||[];initPl.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r)r.pledge='player';});addEvent(`You entered the Speaker race — all ${initPl.length} faction member${initPl.length!==1?'s are':' is'} automatically pledged.`);setView('pledges');}
      const dealBonus=dealType==='chair'?.30:dealType==='vc'?.18:dealType==='leader'?.22:dealType==='seat'?.12:0;
      const chance=Math.min(.88,.3+affinity(G.player,rep)*.5+(rep.disposition-35)/150+dealBonus);
      if(Math.random()<chance){
@@ -1356,7 +1349,7 @@ function showPledgeDealModal(repId){
     G.player.capital-=act.cost;G.careerStats.capitalSpent+=act.cost;
     if(rep.district===G.player.district)G.districtActionThisTurn=true;
     act.do(rep,dealType,dealDetail);
-    checkMilestones();render();
+    render();
   };
 }
 
@@ -1369,9 +1362,50 @@ function doAction(actId,repId){
   G.player.capital-=act.cost;
   G.careerStats.capitalSpent+=act.cost;
   if(rep.district===G.player.district)G.districtActionThisTurn=true;
-  const result=act.do(rep);
-  if(result!==false)checkMilestones();
+  act.do(rep);
   render();
+}
+
+function doRecruitAction(repId){
+  if(G.gameOver||G.gameWon)return;
+  const rep=G.reps.find(r=>r.id===repId);
+  if(!rep)return;
+  if(!G.playerFaction){addEvent('You need a faction to recruit members.');return;}
+  if(rep.party!==G.player.party){addEvent(`Rep. ${rep.last} is not in your party.`);return;}
+  if(isInPlayerFaction(rep.id)){addEvent(`Rep. ${rep.last} is already in your faction.`);return;}
+  if(rep.factionId){addEvent(`Rep. ${rep.last} already belongs to another faction.`);return;}
+  if(G.player.capital<3){addEvent('Not enough political capital (need 3 CP).');return;}
+  G.player.capital-=3;G.careerStats.capitalSpent+=3;
+  // Chance: ally ~85%, friendly ~55%, neutral ~25%, hostile ~5%
+  const base=Math.max(0.05,Math.min(0.90,(rep.disposition-20)/80));
+  const success=Math.random()<base;
+  if(success){
+    rep.factionId='player';
+    G.playerFaction.members.push(rep.id);
+    rep.log.push({m:G.month,y:G.year,text:`Joined ${G.playerFaction.name}.`});
+    addEvent(`Rep. ${rep.last} has joined the ${G.playerFaction.name}.`);
+  } else {
+    addEvent(`Rep. ${rep.last} declined your invitation to join the ${G.playerFaction.name}.`);
+  }
+  render();
+  const fname=G.playerFaction?.name||'your faction';
+  showModal(
+    success?'Invitation Accepted':'Invitation Declined',
+    `Rep. ${rep.first} ${rep.last}`,
+    ()=>`<div style="text-align:center;padding:32px 24px">
+      <div style="font-size:56px;margin-bottom:16px">${success?'✓':'✗'}</div>
+      <div style="font-size:20px;font-weight:700;color:${success?'#2ecc71':'#e74c3c'};margin-bottom:12px">
+        ${success?'Joined '+fname:'Declined'}
+      </div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6">
+        ${success
+          ?`Rep. ${rep.last} accepted your invitation and is now a member of the ${fname}.`
+          :`Rep. ${rep.last} was not ready to commit to the ${fname} at this time.`
+        }
+      </div>
+      ${success?`<div style="font-size:11px;color:var(--muted);margin-top:8px">Faction size: ${G.playerFaction.members.length}</div>`:''}
+    </div>`
+  );
 }
 
 // ===== GLOBAL ACTIONS =====
@@ -1387,7 +1421,7 @@ function doFundraise(){
   G.player.warchest+=extra;
   const ideNote=mult<0.6?' (limited donor pool for your ideology)':mult<0.9?' (moderate donor base)':'';
   addEvent(`Fundraiser held. Raised ${fmtMoney(gain)}${ideNote}.${extra?` Plus ${fmtMoney(extra)} from allied members.`:''}`);
-  checkMilestones();render();
+  render();
 }
 
 // ===== DISTRICT ACTIONS (Session only, 1 CP each) =====
@@ -1401,7 +1435,7 @@ function doDistrictLeg(){
   const gain=+(rng(25,45)/10).toFixed(1);
   G.districtApproval=Math.min(100,G.districtApproval+gain);
   addEvent(`You advanced a district-friendly bill through committee — +${gain}% district approval.`);
-  checkMilestones();render();
+  render();
 }
 function doTownHall(){
   if(G.gameOver||G.gameWon)return;
@@ -1413,7 +1447,7 @@ function doTownHall(){
   const gain=+(rng(15,30)/10).toFixed(1);
   G.districtApproval=Math.min(100,G.districtApproval+gain);
   addEvent(`Town hall in ${distName(G.player.district)} — constituents heard from you directly. +${gain}% district approval.`);
-  checkMilestones();render();
+  render();
 }
 function doDistrictMailer(){
   if(G.gameOver||G.gameWon)return;
@@ -1427,7 +1461,7 @@ function doDistrictMailer(){
   G.districtApproval=Math.min(100,G.districtApproval+apGain);
   G.player.warchest+=wcGain;
   addEvent(`District mailer delivered to ${distName(G.player.district)} — +${apGain}% approval, +${fmtMoney(wcGain)} in small donations.`);
-  checkMilestones();render();
+  render();
 }
 
 // ===== PAU HANA =====
@@ -1505,7 +1539,7 @@ function resolvePauHana(repIds){
   if(!attended.length){
     addEvent('Nobody showed up to your pau hana this month. Try inviting friendlier colleagues.');
   }
-  checkMilestones();render();
+  render();
 }
 
 function seekLeadership(){
@@ -1524,7 +1558,7 @@ function seekLeadership(){
   }else{
     addEvent(`You sought a leadership position but lacked sufficient support. Grow your faction further.`);
   }
-  checkMilestones();render();
+  render();
 }
 
 // ===== FACTION FOUNDING =====
@@ -1593,26 +1627,44 @@ function initSpeakerRace(){
   for(const f of G.factions){
     if(f.members.length>=8){
       const leader=G.reps.find(r=>r.id===f.leaderId);
-      if(leader)candidates.push({factionId:f.id,leaderName:`Rep. ${leader.last}`,pledges:[...f.members],dealWithPlayer:null});
+      if(leader)candidates.push({factionId:f.id,leaderName:`Rep. ${leader.last}`,pledges:[],dealWithPlayer:null});
     }
   }
   G.reps.forEach(r=>r.pledge=null);
   G.pledgeDeals=[];
-  // Assign visually distinct colors to each candidate so pledge view is easy to read
+  // Assign visually distinct colors to each candidate
   const PLEDGE_PAL=['#c0392b','#27ae60','#8e44ad','#e67e22','#16a085','#d35400','#c0922b'];
   candidates.forEach((c,i)=>{c.pledgeColor=PLEDGE_PAL[i%PLEDGE_PAL.length];});
-  candidates.forEach(c=>c.pledges.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r)r.pledge=c.factionId;}));
+  // NPC faction caucuses — members with low disposition may defect (left undecided for player to recruit)
+  const caucusLines=[];
+  for(const cand of candidates){
+    const f=G.factions.find(f=>f.id===cand.factionId);if(!f)continue;
+    let loyal=0,defected=0;
+    f.members.forEach(id=>{
+      const r=G.reps.find(r=>r.id===id);if(!r)return;
+      // Defection chance: ~20% for low-disp (<40) members, ~5% for loyal (≥65)
+      const defChance=Math.max(0.02,Math.min(0.22,(55-r.disposition)/150));
+      if(Math.random()<defChance){defected++;}  // stays pledge=null — available to recruit
+      else{r.pledge=cand.factionId;cand.pledges.push(id);loyal++;}
+    });
+    const defNote=defected>0?` <span style="color:var(--hostile);font-size:9px">(${defected} dissident${defected>1?'s':''})</span>`:'';
+    caucusLines.push(`<div class="erow"><span style="color:${cand.pledgeColor}">★ ${cand.leaderName}</span><span>${loyal} pledged${defNote}</span></div>`);
+    if(defected>0)addEvent(`${cand.leaderName}'s caucus: ${loyal} pledged, ${defected} dissident${defected>1?'s':''} uncommitted.`);
+  }
   G.speakerRace={active:true,declared:false,candidates,playerAcceptedOffer:null};
   // Award triple capital for the speaker race
   const tripleBonus=calcCapital(G.player)*2;
   G.player.capital+=tripleBonus;
   addEvent(`Speaker Race — triple capital bonus: +${tripleBonus} CP awarded to all contenders.`);
-  const npcList=candidates.map(c=>`<div class="erow"><span>★ ${c.leaderName}</span><span>${c.pledges.length} pledges</span></div>`).join('');
+  const pfSize=G.playerFaction?.members.length||0;
   showModal(`December ${G.year} — Speaker Race`,`${candidates.length} candidate${candidates.length!==1?'s':''} have declared`,()=>`
-    <div class="msec"><h3>Speaker Candidates</h3>${npcList||'<div class="mev">No NPC candidates yet.</div>'}</div>
-    <div class="msec"><h3>Your Status</h3>
-      <div class="mev">Your caucus: <strong>${G.playerFaction?.members.length||0} members</strong></div>
-      <div class="mev" style="color:var(--ally);font-weight:600">Each candidate will now make you an offer for your support. You may also declare your own candidacy.</div>
+    <div class="msec"><h3>Faction Caucus Results</h3>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Each faction voted internally — dissidents are uncommitted and can be recruited.</div>
+      ${caucusLines.join('')||'<div class="mev">No NPC candidates yet.</div>'}
+    </div>
+    <div class="msec"><h3>Your Faction</h3>
+      <div class="mev">You lead <strong>${G.playerFaction?.name||'no faction'}</strong> — <strong>${pfSize} member${pfSize!==1?'s':''}</strong></div>
+      <div class="mev" style="color:var(--ally);font-weight:600">${pfSize>=8?'As faction leader, your decision is binding — your members follow your pledge automatically.':'Build to 8 members to declare your own candidacy.'}</div>
     </div>`);
   document.getElementById('mok').onclick=()=>{closeModal();showAllCandidateOffers(candidates);};
   document.getElementById('overlay').classList.add('active');
@@ -1672,11 +1724,12 @@ function acceptOffer(idx){
   G.speakerRace.playerAcceptedOffer={candFactionId:o.cand.factionId,offer:o.offer};
   const pledgeIds=G.playerFaction?[...G.playerFaction.members]:[];
   pledgeIds.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r){r.pledge=o.cand.factionId;if(!o.cand.pledges.includes(r.id))o.cand.pledges.push(r.id);}});
-  addEvent(`You pledged support to ${o.cand.leaderName} in exchange for ${o.offer.label} if they win the speakership.`);
+  const factionNote=pledgeIds.length>0?` Your ${pledgeIds.length} faction member${pledgeIds.length>1?'s are':' is'} now pledged to ${o.cand.leaderName}.`:'';
+  addEvent(`You pledged support to ${o.cand.leaderName} in exchange for ${o.offer.label} if they win the speakership.${factionNote}`);
   const btns=document.getElementById(`offer-btns-${idx}`);
   const resp=document.getElementById(`offer-resp-${idx}`);
   if(btns)btns.style.display='none';
-  if(resp){resp.style.display='block';resp.style.color='var(--ally)';resp.textContent=`✓ Pledged — you'll receive ${o.offer.label} if ${o.cand.leaderName} wins.`;}
+  if(resp){resp.style.display='block';resp.style.color='var(--ally)';resp.innerHTML=`✓ Pledged to ${o.cand.leaderName} — you'll receive ${o.offer.label} if they win.${pledgeIds.length>0?`<br><span style="font-size:9px;color:var(--muted)">Your ${pledgeIds.length} faction member${pledgeIds.length>1?'s are':' is'} bound by your decision as leader.</span>`:''}`}
   // Dismiss all remaining open offers and hide self-declare button
   G._pendingOffers.forEach((_,i)=>{if(i!==idx)dismissOffer(i);});
   const mok=document.getElementById('mok');if(mok)mok.style.display='none';
@@ -1698,7 +1751,7 @@ function declareForSpeaker(){
   const initPledges=G.playerFaction?.members||[];
   initPledges.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r)r.pledge='player';});
   document.getElementById('race-declare-btn').style.display='none';
-  addEvent(`You declared your candidacy for Speaker of the House with ${initPledges.length} initial pledge${initPledges.length!==1?'s':''}.`);
+  addEvent(`You declared for Speaker — as faction leader, all ${initPledges.length} member${initPledges.length!==1?'s are':' is'} automatically pledged to your candidacy.`);
   setView('pledges');
   render();
 }
@@ -1829,51 +1882,62 @@ function updateChallengerMonthly(){
 
 // ===== PRIMARY ELECTION =====
 function computePrimaryResult(){
-  const dec=G.elecDeclarations?.find(d=>d.electionType==='primary'&&d.fired&&!d.eliminated);
-  if(!dec)return{won:true,unopposed:true};
-  const ch=dec.challenger;
+  const decs=(G.elecDeclarations||[]).filter(d=>d.electionType==='primary'&&d.fired&&!d.eliminated);
+  if(!decs.length)return{won:true,unopposed:true};
+  const challCount=decs.length;
+  // Use strongest challenger (by warchest) as the headline matchup
+  const topDec=decs.reduce((best,d)=>d.challenger.warchest>best.challenger.warchest?d:best,decs[0]);
+  const ch=topDec.challenger;
   const incumbBase=0.62;
+  const multiBonus=challCount>1?0.06:0;  // split field slightly benefits incumbent
   const aBonus=(G.districtApproval-55)/200;
   const wcRatio=G.player.warchest/Math.max(ch.warchest,500);
   const wBonus=Math.min(0.14,wcRatio>1?Math.log(wcRatio)/14:-Math.log(1/wcRatio)/18);
   const senBonus=Math.min(0.08,G.player.seniority*0.011);
-  const playerChance=Math.min(0.93,Math.max(0.07,incumbBase+aBonus+wBonus+senBonus));
+  const playerChance=Math.min(0.93,Math.max(0.07,incumbBase+aBonus+wBonus+senBonus+multiBonus));
   const won=Math.random()<playerChance;
-  // Loss margin capped at 20 pts: player gets at least 40%, challenger at most 60%
   const playerPct=Math.round(won?50+Math.random()*26:40+Math.random()*9);
-  const chalPct=100-playerPct;
-  if(won){dec.eliminated=true;G.player.seniority++;}
-  return{won,ch,playerPct,chalPct,playerChance:Math.round(playerChance*100),dec};
+  // With multiple challengers, top challenger gets 55-65% of remaining votes
+  const remaining=100-playerPct;
+  const chalPct=challCount>1?Math.round(remaining*(0.55+Math.random()*0.10)):remaining;
+  if(won)decs.forEach(d=>{d.eliminated=true;});
+  return{won,ch,playerPct,chalPct,challCount,playerChance:Math.round(playerChance*100)};
 }
 
 // ===== REELECTION (GENERAL) =====
 function checkPlayerReelection(){
-  const genDec=G.elecDeclarations?.find(d=>d.electionType==='general'&&d.fired&&!d.eliminated);
-  const ch=genDec?.challenger;
+  const genDecs=(G.elecDeclarations||[]).filter(d=>d.electionType==='general'&&d.fired&&!d.eliminated);
+  // Eliminate all challengers after general election
+  (G.elecDeclarations||[]).forEach(d=>{d.eliminated=true;});
+  // Unopposed in the general
+  if(!genDecs.length)return{won:true,unopposed:true,
+    msg:`GENERAL: You ran unopposed in ${distName(G.player.district)} — advancing to next term.`};
+  const challCount=genDecs.length;
+  // Use strongest challenger (by warchest) as the headline matchup
+  const topDec=genDecs.reduce((best,d)=>d.challenger.warchest>best.challenger.warchest?d:best,genDecs[0]);
+  const ch=topDec.challenger;
   const approval=Math.round(G.districtApproval);
   const base=0.55;
   const wBonus=Math.min(0.20,G.player.warchest/500000*0.20);
   const aBonus=(G.districtApproval-50)/100*0.30;
-  const chalPenalty=ch?Math.min(0.10,ch.warchest/200000*0.10):0;
+  const chalPenalty=Math.min(0.10,ch.warchest/200000*0.10);
+  const multiBonus=challCount>1?0.05:0;  // split field benefits incumbent
   // Republican challengers in Democrat-dominant districts are heavily disadvantaged
-  const isRepInDemStronghold=ch&&ch.party==='R'&&G.player.party==='D'&&DEM_STRONGHOLDS.includes(G.player.district);
+  const isRepInDemStronghold=ch.party==='R'&&G.player.party==='D'&&DEM_STRONGHOLDS.includes(G.player.district);
   const geoBonus=isRepInDemStronghold?0.28:0;
-  const chance=Math.min(0.97,Math.max(0.05,base+wBonus+aBonus-chalPenalty+geoBonus));
+  const chance=Math.min(0.97,Math.max(0.05,base+wBonus+aBonus-chalPenalty+multiBonus+geoBonus));
   const won=approval>=60?Math.random()<0.96:Math.random()<chance;
-  // Loss margin capped at 20 pts: player gets at least 40%, challenger at most 60%
   const playerPct=Math.round(won?50+Math.random()*22:40+Math.random()*9);
-  const chalPct=100-playerPct;
-  const chalName=ch?`${ch.first} ${ch.last}`:'your opponent';
-  const chalParty=ch?(ch.party==='D'?'Democrat':'Republican'):'';
-  // Eliminate all challengers after general election
-  (G.elecDeclarations||[]).forEach(d=>{d.eliminated=true;});
+  const remaining=100-playerPct;
+  const chalPct=challCount>1?Math.round(remaining*(0.55+Math.random()*0.10)):remaining;
+  const chalName=`${ch.first} ${ch.last}`;
+  const chalParty=ch.party==='D'?'Democrat':'Republican';
   if(won){
-    if(!ch)G.player.seniority++;
-    return{won:true,ch,playerPct,chalPct,
-      msg:`GENERAL: You won reelection in ${distName(G.player.district)} — ${playerPct}% to ${chalPct}%${ch?' vs. '+chalParty+' challenger '+chalName:''}.`};
+    return{won:true,ch,playerPct,chalPct,challCount,
+      msg:`GENERAL: You won reelection in ${distName(G.player.district)} — ${playerPct}% to ${chalPct}% vs. ${chalParty} ${chalName}.`};
   }else{
-    return{won:false,ch,playerPct,chalPct,
-      msg:`GENERAL: You lost to ${chalName}${ch?' ('+chalParty+')':''} — ${chalPct}% to ${playerPct}%. Approval: ${approval}%.`};
+    return{won:false,ch,playerPct,chalPct,challCount,
+      msg:`GENERAL: You lost to ${chalName} (${chalParty}) — ${chalPct}% to ${playerPct}%. Approval: ${approval}%.`};
   }
 }
 
@@ -2001,38 +2065,41 @@ function generateRumors(){
   return rumors;
 }
 
-function buildElectionBarGraph(playerPct,chalPct,playerName,chalName,playerParty,chalParty,raceTitle){
+function buildElectionBarGraph(playerPct,chalPct,playerName,chalName,playerParty,chalParty,raceTitle,sfx,challCount){
+  sfx=sfx||('g'+Math.random().toString(36).slice(2,6));
   const playerColor=playerParty==='D'?'#2c5fa0':'#a03020';
   const chalColor=chalParty==='D'?'#2c5fa0':'#a03020';
   const won=playerPct>chalPct;
   const verdictColor=won?'var(--ally)':'var(--hostile)';
+  const fieldNote=challCount>1?`<div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">(${challCount} challengers — field split)</div>`:'';
   const html=`<div class="ebg-wrap">
     <div class="ebg-race-hdr">${raceTitle}</div>
     <div class="ebg-cand-row">
       <div class="ebg-cand-meta">
         <span class="ebg-cand-name" style="color:var(--player)">${playerName} <span style="font-size:9px;opacity:.6">(${playerParty})</span></span>
-        <span class="ebg-cand-pct" id="ebgPctP" style="color:var(--player)">0%</span>
+        <span class="ebg-cand-pct" id="ebgPctP${sfx}" style="color:var(--player)">0%</span>
       </div>
-      <div class="ebg-track"><div class="ebg-bar" id="ebgBarP" style="background:${playerColor}"><span class="ebg-bar-inner-lbl" id="ebgLblP">INCUMBENT</span></div></div>
+      <div class="ebg-track"><div class="ebg-bar" id="ebgBarP${sfx}" style="background:${playerColor}"><span class="ebg-bar-inner-lbl" id="ebgLblP${sfx}">INCUMBENT</span></div></div>
     </div>
     <div class="ebg-cand-row">
       <div class="ebg-cand-meta">
         <span class="ebg-cand-name">${chalName} <span style="font-size:9px;opacity:.6">(${chalParty})</span></span>
-        <span class="ebg-cand-pct" id="ebgPctC" style="color:${chalColor}">0%</span>
+        <span class="ebg-cand-pct" id="ebgPctC${sfx}" style="color:${chalColor}">0%</span>
       </div>
-      <div class="ebg-track"><div class="ebg-bar" id="ebgBarC" style="background:${chalColor}"><span class="ebg-bar-inner-lbl" id="ebgLblC">CHALLENGER</span></div></div>
+      <div class="ebg-track"><div class="ebg-bar" id="ebgBarC${sfx}" style="background:${chalColor}"><span class="ebg-bar-inner-lbl" id="ebgLblC${sfx}">CHALLENGER</span></div></div>
     </div>
-    <div class="ebg-precincts" id="ebgPrecincts">0% of precincts reporting</div>
-    <div class="ebg-verdict" id="ebgVerdict" style="color:${verdictColor}">${won?'✓ Victory':'✗ Defeat'}</div>
+    ${fieldNote}
+    <div class="ebg-precincts" id="ebgPrecincts${sfx}">0% of precincts reporting</div>
+    <div class="ebg-verdict" id="ebgVerdict${sfx}" style="color:${verdictColor}">${won?'✓ Victory':'✗ Defeat'}</div>
   </div>`;
   // Trigger animation after brief delay
   setTimeout(()=>{
-    const bP=document.getElementById('ebgBarP');
-    const bC=document.getElementById('ebgBarC');
-    const pP=document.getElementById('ebgPctP');
-    const pC=document.getElementById('ebgPctC');
-    const prec=document.getElementById('ebgPrecincts');
-    const verd=document.getElementById('ebgVerdict');
+    const bP=document.getElementById('ebgBarP'+sfx);
+    const bC=document.getElementById('ebgBarC'+sfx);
+    const pP=document.getElementById('ebgPctP'+sfx);
+    const pC=document.getElementById('ebgPctC'+sfx);
+    const prec=document.getElementById('ebgPrecincts'+sfx);
+    const verd=document.getElementById('ebgVerdict'+sfx);
     if(!bP||!bC)return;
     bP.style.width=playerPct+'%';bP.classList.add('filled');
     bC.style.width=chalPct+'%';bC.classList.add('filled');
@@ -2247,7 +2314,7 @@ function endTurn(){
     G.donatedTo=[];
     elEvts=runElection();
     generalResult=checkPlayerReelection();
-    addEvent(generalResult.msg);elEvts.push(generalResult.msg);
+    if(generalResult.msg)addEvent(generalResult.msg);
     elEvts.forEach(e=>addEvent(e));
     if(!generalResult.won) G.gameOver=true;
   }
@@ -2262,17 +2329,17 @@ function endTurn(){
     document.getElementById('race-declare-btn').style.display='none';
     runFloorVote();return;
   }
-  // Faction collapse check
+  // Faction collapse — no longer a loss condition; faction simply dissolves
   if(G.factionWeakTurns>=3&&G.playerFaction){
-    G.gameOver=true;
-    addEvent('Your faction collapsed — fewer than 3 members for 3 consecutive months.');
-    setTimeout(()=>showEndScreen(false,0,null,'collapse'),400);
-    G.player.capital=calcCapital(G.player);checkMilestones();render();
-    showModal('Faction Collapsed','Your political base has dissolved.',()=>`<div class="msec"><h3>Defeat</h3><div class="mev">Your faction fell below 3 members for too long. You've lost your political identity in the House.</div></div>`);
+    const fname=G.playerFaction.name;
+    G.playerFaction.members.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r)r.factionId=null;});
+    G.playerFaction=null;G.factionWeakTurns=0;
+    addEvent(`The ${fname} collapsed — too few members for too long. You can form a new faction anytime.`);
+    G.player.capital=calcCapital(G.player);render();
+    showModal('Faction Dissolved',fname,()=>`<div class="msec"><h3>Faction Dissolved</h3><div class="mev">The ${fname} fell below 3 members for 3 consecutive months and has disbanded.</div><div class="mev" style="color:var(--muted);margin-top:6px">You can form a new faction at any time. Your seat and career are not affected.</div></div>`);
     return;
   }
   G.player.capital=calcCapital(G.player);
-  checkMilestones();
   const allies=G.reps.filter(r=>dispId(r.disposition)==='ally'||dispId(r.disposition)==='friendly').length;
   const deps=G._departures||[];G._departures=[];
   // Build departure chart HTML
@@ -2361,16 +2428,17 @@ function endTurn(){
     if(primaryResult&&!primaryResult.unopposed) cards.push({title:`${primaryResult.won?'✓ Primary Victory':'✗ Primary Defeat'}`,sub:`August ${G.year}`,html:`
       <div class="msec">
         <h3 style="color:${primaryResult.won?'var(--ally)':'var(--hostile)'}">${G.player.party==='D'?'Democratic':'Republican'} Primary — ${G.year}</h3>
-        ${buildElectionBarGraph(primaryResult.playerPct,primaryResult.chalPct,`Rep. ${G.player.last}`,`${primaryResult.ch.first} ${primaryResult.ch.last}`,G.player.party,primaryResult.ch.party,`${G.year} ${G.player.party==='D'?'Democratic':'Republican'} Primary`)}
+        ${buildElectionBarGraph(primaryResult.playerPct,primaryResult.chalPct,`Rep. ${G.player.last}`,`${primaryResult.ch.first} ${primaryResult.ch.last}`,G.player.party,primaryResult.ch.party,`${G.year} ${G.player.party==='D'?'Democratic':'Republican'} Primary`,'pr',primaryResult.challCount)}
         <div class="mev" style="color:var(--muted);font-size:10px">Your warchest: ${fmtMoney(G.player.warchest)} · Their warchest: ${fmtMoney(primaryResult.ch.warchest)} · Incumbent odds: ${primaryResult.playerChance}%</div>
         ${primaryResult.won?`<div class="mev" style="color:var(--ally)">Advancing to the November general election.</div>`:`<div class="mev" style="color:var(--hostile)">Your legislative career has ended.</div>`}
       </div>`});
     if(primaryResult?.unopposed) cards.push({title:'Unopposed in Primary',sub:`August ${G.year}`,html:`<div class="msec"><div class="mev" style="color:var(--ally);font-size:13px">✓ No challenger filed in the ${G.year} ${G.player.party==='D'?'Democratic':'Republican'} primary. You advance to the general election in November.</div></div>`});
     // General election result
-    if(generalResult) cards.push({title:`${generalResult.won?'✓ Reelected':'✗ General Election Defeat'}`,sub:`November ${G.year}`,html:`
+    if(generalResult&&generalResult.unopposed) cards.push({title:'✓ Unopposed — General',sub:`November ${G.year}`,html:`<div class="msec"><div class="mev" style="color:var(--ally);font-size:13px">✓ No opponent filed for the ${G.year} general election in ${distName(G.player.district)}. Reelection secured.</div><div class="mev" style="color:var(--muted);font-size:10px">Seniority: ${G.player.seniority} term${G.player.seniority>1?'s':''}</div></div>`});
+    if(generalResult&&!generalResult.unopposed) cards.push({title:`${generalResult.won?'✓ Reelected':'✗ General Election Defeat'}`,sub:`November ${G.year}`,html:`
       <div class="msec">
         <h3 style="color:${generalResult.won?'var(--ally)':'var(--hostile)'}">November ${G.year} — General Election</h3>
-        ${buildElectionBarGraph(generalResult.playerPct,generalResult.chalPct,`Rep. ${G.player.last}`,generalResult.ch?`${generalResult.ch.first} ${generalResult.ch.last}`:'Opponent',G.player.party,generalResult.ch?generalResult.ch.party:(G.player.party==='D'?'R':'D'),`${G.year} General Election`)}
+        ${buildElectionBarGraph(generalResult.playerPct,generalResult.chalPct,`Rep. ${G.player.last}`,`${generalResult.ch.first} ${generalResult.ch.last}`,G.player.party,generalResult.ch.party,`${G.year} General Election`,'ge',generalResult.challCount)}
         <div class="mev" style="color:var(--muted);font-size:10px">District approval: ${Math.round(G.districtApproval)}% · Seniority: ${G.player.seniority} term${G.player.seniority>1?'s':''}</div>
         ${generalResult.won?`<div class="mev" style="color:var(--ally)">Reelection secured — seniority now ${G.player.seniority} term${G.player.seniority>1?'s':''}.</div>`:``}
       </div>`});
@@ -2382,8 +2450,7 @@ function endTurn(){
         <div class="erow"><span>Warchest</span><strong>${fmtMoney(G.player.warchest)}</strong></div>
         <div class="erow"><span>District approval</span><strong>${Math.round(G.districtApproval)}%</strong></div>
         <div class="erow"><span>Capital</span><strong>${G.player.capital}</strong></div>
-        ${!G.milestone2?`<div class="mev" style="font-style:italic;color:var(--muted);margin-top:6px">Path: ${pfSize}/8 faction · ${G.player.pos?'✓ position':'no position'} · ${G.player.warchest>=100000?'✓':''}$100K warchest</div>`:
-        !G.gameWon?`<div class="mev" style="font-style:italic;color:var(--muted);margin-top:6px">Speaker race: declare in December after next election with 8+ members</div>`:''}
+        ${!G.gameWon?`<div class="mev" style="font-style:italic;color:var(--muted);margin-top:6px">Path: ${pfSize}/8 faction · ${G.player.pos?'✓ position':'no position'} · Speaker race in December</div>`:''}
       </div>`});
     render();
     showCardQueue(cards,()=>{
@@ -2395,24 +2462,6 @@ function endTurn(){
   else{showSummary();}
 }
 
-// ===== MILESTONES =====
-function checkMilestones(){
-  const b=document.getElementById('banner');
-  if(!G.milestone1){
-    if(G.reps.filter(r=>dispId(r.disposition)==='ally'||dispId(r.disposition)==='friendly').length>=5){
-      G.milestone1=true;b.textContent='Milestone 1 — 5 allies. Now build a faction, warchest, and committee seat.';b.className='m1';
-    }
-  }
-  if(!G.milestone2&&G.milestone1){
-    const pf=G.playerFaction?.members.length||0;
-    if(pf>=8&&G.player.pos&&G.player.warchest>=100000){
-      G.milestone2=true;b.textContent=`Milestone 2 — ${G.playerFaction.name} has ${pf} members, you hold a position. Declare for Speaker in December after the next election.`;b.className='m2';
-    }
-  }
-  if(G.gameWon&&!b.className.includes('m3')){
-    b.textContent=`Speaker ${G.player.last} — You lead the Hawaii House of Representatives.`;b.className='m3';
-  }
-}
 
 // ===== END SCREEN =====
 function showSpeakerWinAssign(finalMine,rival,dealNotes){
@@ -2690,17 +2739,39 @@ function resolveUnionEndorsement(unionId,score,maxScore){
   const chance=Math.min(0.94,Math.max(0.04,alignBase+friendBonus+posBonus+wcBonus+apBonus+scoreBonus));
   const won=Math.random()<chance;
   if(won){
-    const wcGain=rng(u.bonus.wc[0],u.bonus.wc[1]);
+    // Donation in $500 increments — max scales by union size, weighted toward higher amounts by score
+    const maxDonation=u.size==='large'?2000:u.size==='medium'?1500:1000;
+    const steps=maxDonation/500;  // 4 for large, 3 for medium, 2 for small
+    // Score pushes toward max: high score heavily favors top increment, low score caps lower
+    const rawStep=Math.ceil((0.35+scoreRatio*0.65)*steps*(0.6+Math.random()*0.8));
+    const wcGain=Math.max(500,Math.min(maxDonation,Math.round(rawStep)*500));
     const apGain=rng(u.bonus.ap[0]*10,u.bonus.ap[1]*10)/10;
     G.player.warchest+=wcGain;
     G.districtApproval=Math.min(100,G.districtApproval+apGain);
     G.endorsements[unionId]={sought:true,endorsed:true,result:'endorsed'};
-    addEvent(`✓ ${u.name} endorsed you — +${fmtMoney(wcGain)} warchest, +${apGain.toFixed(1)}% district approval.`);
+    addEvent(`✓ ${u.name} endorsed you — +${fmtMoney(wcGain)} warchest${apGain>0?', +'+apGain.toFixed(1)+'% approval':''}.`);
+    renderEndorsePanel();renderHeader();renderSidebar();
+    showModal(`${u.name} — Endorsed`,u.sub,()=>`
+      <div class="msec" style="border-left:3px solid #27ae60;padding-left:10px;margin-left:0">
+        <h3 style="color:#27ae60">✓ Endorsed</h3>
+        <div class="mev" style="line-height:1.6">The ${u.name} screening committee has voted to endorse your ${G.year} campaign.</div>
+        <div style="margin-top:12px;padding:10px 12px;background:rgba(39,174,96,.08);border-radius:4px;border:1px solid rgba(39,174,96,.25)">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Campaign Contribution</div>
+          <div style="font-size:20px;font-weight:700;color:#27ae60;font-family:'Inconsolata',monospace">${fmtMoney(wcGain)}</div>
+        </div>
+        ${apGain>0?`<div class="mev" style="color:var(--muted);font-size:10px;margin-top:8px">+${apGain.toFixed(1)}% district approval</div>`:''}
+      </div>`);
   }else{
     G.endorsements[unionId]={sought:true,endorsed:false,result:'rejected'};
     addEvent(`${u.name} declined to endorse you. They may back your opponent.`);
+    renderEndorsePanel();renderHeader();renderSidebar();
+    showModal(`${u.name} — Not Endorsed`,u.sub,()=>`
+      <div class="msec" style="border-left:3px solid var(--hostile);padding-left:10px;margin-left:0">
+        <h3 style="color:var(--hostile)">✗ Endorsement Declined</h3>
+        <div class="mev" style="line-height:1.6">After reviewing your interview responses, the ${u.name} screening committee voted not to endorse your campaign at this time.</div>
+        <div class="mev" style="color:var(--muted);font-size:10px;margin-top:6px">They may remain neutral or endorse your opponent.</div>
+      </div>`);
   }
-  renderEndorsePanel();renderHeader();renderSidebar();
 }
 
 function toggleFacPtPanel(){
@@ -3214,7 +3285,7 @@ function showFactionDetail(f){
     ${isp?`<div class="msec"><h3>Your Path</h3>
       <div class="mev">Faction size: ${members.length}/8 for Speaker declaration</div>
       <div class="mev">Position: ${posLabel(G.player.pos)||'None — lobby a chair in December'}</div>
-      <div class="mev">Warchest: ${fmtMoney(G.player.warchest)} / $100K milestone</div>
+      <div class="mev">Warchest: ${fmtMoney(G.player.warchest)}</div>
       <div class="mev">Speaker attempts so far: ${G.careerStats.speakerAttempts}</div>
     </div>`:''}`);
 }
@@ -3268,7 +3339,7 @@ function renderHeader(){
   document.getElementById('h-war').textContent=fmtMoney(G.player.warchest);
   document.getElementById('h-dist').textContent=`${Math.round(G.districtApproval)}%`;
   const pfSize=G.playerFaction?.members.length||0;
-  document.getElementById('h-fac').textContent=G.playerFaction?`${G.playerFaction.name} (${pfSize})`:G.milestone1?'Not founded':'—';
+  document.getElementById('h-fac').textContent=G.playerFaction?`${G.playerFaction.name} (${pfSize})`:'—';
   const pips=document.getElementById('h-pips');pips.innerHTML='';
   for(let i=0;i<Math.min(maxCap,14);i++){const p=document.createElement('div');p.className='pip'+(i<G.player.capital?' on':'');pips.appendChild(p);}
 }
@@ -3359,7 +3430,7 @@ function renderSidebar(){
       const btn=document.createElement('button');btn.className='abt';btn.disabled=!can;btn.title=act.desc;
       if(act.undermine)btn.style.cssText='border-color:rgba(168,46,26,.28);';
       btn.innerHTML=`<span>${act.label}</span><span class="ac${!can?' broke':''}" style="${act.undermine?'background:rgba(168,46,26,.55);':''}">${act.cost} CP</span>`;
-      btn.onclick=()=>act.id==='secure-pledge'?showPledgeDealModal(rep.id):doAction(act.id,rep.id);al.appendChild(btn);
+      btn.onclick=()=>act.id==='secure-pledge'?showPledgeDealModal(rep.id):act.id==='recruit'?doRecruitAction(rep.id):doAction(act.id,rep.id);al.appendChild(btn);
     });
   }
   if(phase==='Interim'&&!G.speakerRace?.active){const n=document.createElement('div');n.className='pnote';n.textContent='Co-sponsoring legislation available Jan–May only.';al.appendChild(n);}
@@ -3458,7 +3529,7 @@ function showCC(){
 function startGame(){
   const first=document.getElementById('cc-first').value.trim()||'Keoni';
   const last=document.getElementById('cc-last').value.trim()||'Makoa';
-  G.player={id:0,first,last,district:document.getElementById('cc-dist').value,ethnicity:document.getElementById('cc-eth').value,gender:document.getElementById('cc-gen').value,age:parseInt(document.getElementById('cc-age').value)||34,ideology:parseInt(document.getElementById('cc-ideo').value)||35,party:document.getElementById('cc-party').value,seniority:0,warchest:15000,pos:null,factionId:null,capital:8};
+  G.player={id:0,first,last,district:document.getElementById('cc-dist').value,ethnicity:document.getElementById('cc-eth').value,gender:document.getElementById('cc-gen').value,age:parseInt(document.getElementById('cc-age').value)||34,ideology:parseInt(document.getElementById('cc-ideo').value)||35,party:document.getElementById('cc-party').value,seniority:0,warchest:15000,pos:null,factionId:null,capital:0};
   G.reps=generateReps();assignPositions(G.reps);calibrateWarchests(G.reps);generateFactions();
   // Initialize inter-member relationships on Disposition scale
   G.reps.forEach(r=>{
@@ -3500,6 +3571,7 @@ function startGame(){
       }
     }
   }
+  G.player.capital=calcCapital(G.player);
   bgmInit();
   addEvent(`Welcome to the Hawaii House, Rep. ${last}. First session opens in January. ${G.factions.length} factions have organized.`);
   addEvent(`Your district approval in ${distName(G.player.district)} starts at ${Math.round(G.districtApproval)}%. Keep it high for reelection.`);
