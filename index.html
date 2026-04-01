@@ -22,7 +22,13 @@ canvas { image-rendering: pixelated; image-rendering: crisp-edges; border: 3px s
 @media (pointer: coarse) { #touch-controls { display: flex; } }
 /* Landscape: overlay controls on canvas edges, full height for canvas */
 @media (pointer: coarse) and (orientation: landscape) {
-  #touch-controls { background: transparent; padding: 8px 14px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  #touch-controls {
+    background: transparent;
+    padding: 8px 14px;
+    padding-left: calc(14px + env(safe-area-inset-left));
+    padding-right: calc(14px + env(safe-area-inset-right));
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
   #dpad { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 3px; }
   .dpad-btn { font-size: 20px; border-radius: 8px; }
   #btn-action { width: 78px; height: 78px; font-size: 13px; }
