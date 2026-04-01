@@ -2,16 +2,62 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="E-Manual Labor">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="manifest" href="manifest.json">
 <title>E-Manual Labor</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-canvas { image-rendering: pixelated; image-rendering: crisp-edges; border: 3px solid #444; }
+body { background: #111; display: flex; justify-content: center; align-items: center; height: 100dvh; overflow: hidden; touch-action: none; }
+canvas { image-rendering: pixelated; image-rendering: crisp-edges; border: 3px solid #444; display: block; }
+#touch-controls {
+  display: none; position: fixed; bottom: 0; left: 0; right: 0;
+  padding: 12px 20px; padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  justify-content: space-between; align-items: flex-end;
+  pointer-events: none; z-index: 100;
+}
+@media (pointer: coarse) { #touch-controls { display: flex; } }
+#dpad {
+  display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(3, 64px);
+  gap: 4px; pointer-events: all;
+}
+.dpad-btn {
+  background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.35);
+  border-radius: 10px; color: white; font-size: 26px;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer;
+}
+.dpad-btn:active { background: rgba(255,255,255,0.35); }
+.dpad-empty { visibility: hidden; }
+#btn-action {
+  width: 100px; height: 100px;
+  background: rgba(255,215,0,0.25); border: 3px solid rgba(255,215,0,0.7);
+  border-radius: 50%; color: #FFD700; font-size: 15px; font-weight: bold;
+  font-family: monospace; pointer-events: all; touch-action: none;
+  user-select: none; -webkit-user-select: none; cursor: pointer; letter-spacing: 1px;
+}
+#btn-action:active { background: rgba(255,215,0,0.5); }
 </style>
 </head>
 <body>
 <canvas id="game" width="960" height="720"></canvas>
+<div id="touch-controls">
+  <div id="dpad">
+    <div class="dpad-empty"></div>
+    <button class="dpad-btn" id="btn-up">▲</button>
+    <div class="dpad-empty"></div>
+    <button class="dpad-btn" id="btn-left">◄</button>
+    <div class="dpad-empty"></div>
+    <button class="dpad-btn" id="btn-right">►</button>
+    <div class="dpad-empty"></div>
+    <button class="dpad-btn" id="btn-down">▼</button>
+    <div class="dpad-empty"></div>
+  </div>
+  <button id="btn-action">GRAB</button>
+</div>
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -887,7 +933,7 @@ function drawTitle() {
 
   if (Math.floor(frameCount/30)%2===0) {
     ctx.fillStyle='#FFD700'; ctx.font='bold 24px monospace';
-    ctx.fillText('PRESS ENTER TO START',480,560);
+    ctx.fillText('PRESS ENTER / TAP TO START',480,560);
   }
   ctx.textAlign='left';
 }
@@ -1161,6 +1207,40 @@ function startGame() {
 document.addEventListener('keydown', e=>{
   if (e.key==='Enter' && (gameState===STATE.TITLE||gameState===STATE.WIN||gameState===STATE.LOSE)) startGame();
 });
+
+// ── MOBILE SUPPORT ──
+function resizeCanvas() {
+  const isMobile = window.matchMedia('(pointer: coarse)').matches;
+  const controlsH = isMobile ? 220 : 0;
+  const scale = Math.min(window.innerWidth / 960, (window.innerHeight - controlsH) / 720);
+  canvas.style.width = Math.floor(960 * scale) + 'px';
+  canvas.style.height = Math.floor(720 * scale) + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function addDpadBtn(id, key) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('touchstart', e => { e.preventDefault(); keys[key] = true; }, { passive: false });
+  el.addEventListener('touchend', e => { e.preventDefault(); keys[key] = false; }, { passive: false });
+  el.addEventListener('touchcancel', () => { keys[key] = false; });
+}
+addDpadBtn('btn-up', 'arrowup');
+addDpadBtn('btn-down', 'arrowdown');
+addDpadBtn('btn-left', 'arrowleft');
+addDpadBtn('btn-right', 'arrowright');
+
+const btnAction = document.getElementById('btn-action');
+if (btnAction) {
+  btnAction.addEventListener('touchstart', e => { e.preventDefault(); keys[' '] = true; }, { passive: false });
+  btnAction.addEventListener('touchend', e => { e.preventDefault(); keys[' '] = false; }, { passive: false });
+  btnAction.addEventListener('touchcancel', () => { keys[' '] = false; });
+}
+
+document.addEventListener('touchstart', e => {
+  if (gameState === STATE.TITLE || gameState === STATE.WIN || gameState === STATE.LOSE) startGame();
+}, { passive: true });
 
 function gameLoop() {
   frameCount++;
