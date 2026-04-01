@@ -1229,17 +1229,22 @@ window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
 resizeCanvas();
 
-function addDpadBtn(id, key) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.addEventListener('touchstart', e => { e.preventDefault(); keys[key] = true; }, { passive: false });
-  el.addEventListener('touchend', e => { e.preventDefault(); keys[key] = false; }, { passive: false });
-  el.addEventListener('touchcancel', () => { keys[key] = false; });
+const dpadKeyMap = { 'btn-up': 'arrowup', 'btn-down': 'arrowdown', 'btn-left': 'arrowleft', 'btn-right': 'arrowright' };
+const dpadKeys = Object.values(dpadKeyMap);
+
+function clearDpad() { dpadKeys.forEach(k => { keys[k] = false; }); }
+
+function applyDpadTouch(touch) {
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  clearDpad();
+  if (el && dpadKeyMap[el.id]) keys[dpadKeyMap[el.id]] = true;
 }
-addDpadBtn('btn-up', 'arrowup');
-addDpadBtn('btn-down', 'arrowdown');
-addDpadBtn('btn-left', 'arrowleft');
-addDpadBtn('btn-right', 'arrowright');
+
+const dpad = document.getElementById('dpad');
+dpad.addEventListener('touchstart', e => { e.preventDefault(); applyDpadTouch(e.touches[0]); }, { passive: false });
+dpad.addEventListener('touchmove',  e => { e.preventDefault(); applyDpadTouch(e.touches[0]); }, { passive: false });
+dpad.addEventListener('touchend',   e => { e.preventDefault(); clearDpad(); }, { passive: false });
+dpad.addEventListener('touchcancel', clearDpad);
 
 const btnAction = document.getElementById('btn-action');
 if (btnAction) {
