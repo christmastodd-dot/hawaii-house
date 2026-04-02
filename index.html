@@ -1301,7 +1301,7 @@ function availableActions(rep){
     if(a.requiresNoPledge&&rep.pledge==='player')return false;
     if(a.requiresRivalPledge&&(!rep.pledge||rep.pledge==='player'))return false;
     if(a.requiresFactionLeader&&!G.factions.find(f=>f.leaderId===rep.id))return false;
-    if(a.id==='recruit'&&isInPlayerFaction(rep.id))return false;
+    if(a.id==='recruit'&&(isInPlayerFaction(rep.id)||rep.factionId))return false;
     if(a.id==='join-caucus'&&isInPlayerFaction(rep.id))return false;
     if(a.id==='donate'&&G.donatedTo.includes(rep.id))return false;
     if(a.undermine&&isInPlayerFaction(rep.id))return false;
