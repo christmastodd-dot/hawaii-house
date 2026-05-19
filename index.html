@@ -1646,19 +1646,66 @@ function seekLeadership(){
 }
 
 // ===== FACTION FOUNDING =====
+function eligibleFoundingMembers(){
+  return G.reps.filter(r=>r.party===G.player.party&&r.disposition>=60&&!r.factionId);
+}
 function showFoundFaction(){
-  showModal('Found Your Faction','Give your alliance a name',()=>`
-    <div class="msec"><div class="fr"><label>Caucus Name</label><input id="ff-name" type="text" value="New Hawaii Caucus"></div>
-    <div class="mev">Your faction members appear in Faction view as a distinct bloc. Recruit allied members with the "Recruit" action.</div>
-    <div class="mev"><strong>Milestone 2:</strong> 8 members · committee position · $100K warchest</div>
-    <div class="mev"><strong>Milestone 3:</strong> 8 members to declare for Speaker in December election years</div></div>`);
-  document.getElementById('mok').textContent='Found Caucus →';
-  document.getElementById('mok').onclick=()=>{
+  const pool=eligibleFoundingMembers();
+  if(pool.length<3){
+    showModal('Need More Allies','You need at least 3 friendly same-party colleagues to found a caucus.',()=>`
+      <div class="msec"><div class="mev">A faction needs three founding members at minimum. Build your relationships with same-party colleagues until at least three are <strong>Friendly</strong> (60+) and unaffiliated.</div>
+      <div class="mev">Currently eligible: <strong>${pool.length}</strong> ${pool.length===1?'colleague':'colleagues'}.</div></div>`);
+    return;
+  }
+  // Sort: allies first then friendlies, then by ideological proximity
+  const sorted=[...pool].sort((a,b)=>{
+    const ad=b.disposition-a.disposition;if(ad)return ad;
+    return Math.abs(a.ideology-G.player.ideology)-Math.abs(b.ideology-G.player.ideology);
+  });
+  showModal('Found Your Faction','Pick founding members (minimum 3)',()=>`
+    <div class="msec">
+      <div class="fr"><label>Caucus Name</label><input id="ff-name" type="text" maxlength="40" value="New Hawaii Caucus"></div>
+      <div class="mev" style="margin-top:8px">Select <strong>at least 3</strong> friendly same-party colleagues to commit as founding members. They will join automatically.</div>
+      <div id="ff-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:4px;margin-top:6px;display:flex;flex-direction:column;gap:2px;">
+        ${sorted.map(r=>{
+          const dl=dispLabel(r.disposition);const dc=dispColor(r.disposition);
+          return `<label class="ff-row" data-id="${r.id}" style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:3px;cursor:pointer;font-size:11px;">
+            <input type="checkbox" class="ff-cb" data-id="${r.id}" style="cursor:pointer">
+            <span style="flex:1;font-weight:600">Rep. ${r.last}</span>
+            <span style="font-size:10px;color:var(--muted)">${distName(r.district)} · ${ideoLabel(r.ideology)}</span>
+            <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:${dc};color:white">${dl}</span>
+          </label>`;
+        }).join('')}
+      </div>
+      <div id="ff-count" style="margin-top:6px;font-size:11px;color:var(--muted);">0 selected · need 3+</div>
+    </div>`);
+  const ok=document.getElementById('mok');
+  ok.textContent='Found Caucus →';
+  ok.disabled=true;ok.style.opacity='.5';
+  const updateCount=()=>{
+    const n=document.querySelectorAll('#ff-list .ff-cb:checked').length;
+    document.getElementById('ff-count').textContent=`${n} selected · ${n>=3?'ready':'need '+(3-n)+' more'}`;
+    ok.disabled=n<3;ok.style.opacity=n<3?'.5':'1';
+  };
+  document.querySelectorAll('#ff-list .ff-cb').forEach(cb=>cb.addEventListener('change',updateCount));
+  ok.onclick=()=>{
+    const ids=[...document.querySelectorAll('#ff-list .ff-cb:checked')].map(cb=>+cb.dataset.id);
+    if(ids.length<3)return;
     const name=document.getElementById('ff-name').value.trim()||'New Hawaii Caucus';
     G.playerFaction={id:'player',name,color:'#2c5f8a',leaderId:0,members:[]};
-    addEvent(`You founded the ${name}. Recruit members with the "Recruit to Your Faction" action.`);
-    document.getElementById('mok').onclick=closeModal;
-    document.getElementById('mok').textContent='Continue →';
+    const joined=[];
+    ids.forEach(id=>{
+      const r=G.reps.find(x=>x.id===id);
+      if(r&&!r.factionId){
+        r.factionId='player';
+        r.joinedFactionTurn=G.careerStats.turns;
+        G.playerFaction.members.push(r.id);
+        r.log.push({m:G.month,y:G.year,text:`Founding member of the ${name}.`});
+        joined.push(r.last);
+      }
+    });
+    addEvent(`You founded the ${name} with ${joined.length} founding members: ${joined.join(', ')}.`);
+    ok.onclick=closeModal;ok.textContent='Continue →';ok.disabled=false;ok.style.opacity='1';
     closeModal();render();
   };
   document.getElementById('overlay').classList.add('active');
@@ -2465,14 +2512,13 @@ function endTurn(){
     document.getElementById('race-declare-btn').style.display='none';
     runFloorVote();return;
   }
-  // Faction collapse check
+  // Faction collapse — dissolves the player faction but the game continues
   if(G.factionWeakTurns>=3&&G.playerFaction){
-    G.gameOver=true;
-    addEvent('Your faction collapsed — fewer than 3 members for 3 consecutive months.');
-    setTimeout(()=>showEndScreen(false,0,null,'collapse'),400);
-    G.player.capital=calcCapital(G.player);checkMilestones();render();
-    showModal('Faction Collapsed','Your political base has dissolved.',()=>`<div class="msec"><h3>Defeat</h3><div class="mev">Your faction fell below 3 members for too long. You've lost your political identity in the House.</div></div>`);
-    return;
+    const name=G.playerFaction.name;
+    G.reps.forEach(r=>{if(isInPlayerFaction(r.id)){r.factionId=null;r.joinedFactionTurn=null;r.loyal=false;}});
+    G.playerFaction=null;G.factionWeakTurns=0;
+    addEvent(`The ${name} dissolved — fewer than 3 members for three months running. You are now Independent.`);
+    showModal('Faction Dissolved',`The ${name} could not hold together.`,()=>`<div class="msec"><div class="mev">Your caucus fell below 3 members for three consecutive months and has formally dissolved. Remaining members are now unaffiliated and you are <strong>Independent</strong>.</div><div class="mev">You may found a new faction later once you've built enough friendly relationships, or request to join an existing caucus.</div></div>`);
   }
   G.player.capital=calcCapital(G.player);
   checkMilestones();
@@ -2872,26 +2918,15 @@ function seekUnionEndorsement(unionId){
 
 function resolveUnionEndorsement(unionId,score,maxScore){
   const u=HAWAII_UNIONS.find(x=>x.id===unionId);if(!u)return;
-  // Interview score modifier: perfect=+0.18, neutral (half)=0, zero=-0.14
-  const scoreRatio=score/maxScore;                      // 0.0 – 1.0
-  const scoreBonus=(scoreRatio-0.5)*0.32;               // −0.16 → +0.16
-  // Party alignment base (minor role — interview answers matter more)
-  const alignBase=u.align==='dem'?(G.player.party==='D'?0.26:0.08):u.align==='swing'?0.20:0.16;
-  // Friends in house — reps with Friendly (≥60) or Ally disposition
-  const friends=G.reps.filter(r=>r.disposition>=60).length;
-  const friendBonus=Math.min(0.20,friends/51*0.20);
-  // Leadership or chair position bonus
-  const hasPosition=!!(G.player.pos&&(
-    G.player.pos==='speaker'||G.player.pos==='maj-leader'||
-    G.player.pos==='caucus-leader'||G.player.pos==='floor-leader'||
-    G.player.pos.startsWith('whip')||G.player.pos.startsWith('chair-')
-  ));
-  const posBonus=hasPosition?0.12:0;
-  // Warchest — log scale; $30k = neutral, $100k ≈ +0.08, <$10k ≈ −0.05
-  const wcBonus=Math.min(0.10,Math.max(-0.06,(Math.log(Math.max(G.player.warchest,500)/30000)/Math.log(10))*0.06));
-  // Approval rating — 55% = neutral; ±10pp ≈ ±0.04
-  const apBonus=Math.min(0.08,Math.max(-0.06,(G.districtApproval-55)/120));
-  const chance=Math.min(0.94,Math.max(0.04,alignBase+friendBonus+posBonus+wcBonus+apBonus+scoreBonus));
+  // Incumbents start at an 80% base; power tier moves it up or down.
+  const tier=getPowerTier(G.player.pos);
+  const tierMod={1:.12,2:.08,3:.04,4:.01,5:-.10}[tier]||0;
+  // Interview answers still matter a little (±0.06)
+  const scoreRatio=score/maxScore;
+  const scoreBonus=(scoreRatio-0.5)*0.12;
+  // Party alignment — minor unless the union is openly partisan
+  const partyBonus=u.align==='dem'?(G.player.party==='D'?0.05:-0.12):u.align==='gop'?(G.player.party==='R'?0.05:-0.12):0;
+  const chance=Math.min(0.97,Math.max(0.20,0.80+tierMod+scoreBonus+partyBonus));
   const won=Math.random()<chance;
   if(won){
     const wcGain=rng(u.bonus.wc[0],u.bonus.wc[1]);
@@ -3469,8 +3504,8 @@ function renderFactions(){
   if(G.speakerRace?.active){
     const div=document.createElement('div');div.style.cssText='margin-top:6px;font-size:10px;color:var(--muted);text-align:center;';div.textContent='Speaker race underway — see Pledges view';list.appendChild(div);
   }
-  const allies=G.reps.filter(r=>dispId(r.disposition)==='ally'||dispId(r.disposition)==='friendly').length;
-  document.getElementById('found-btn').style.display=(allies>=2&&!G.playerFaction)?'block':'none';
+  const founders=eligibleFoundingMembers().length;
+  document.getElementById('found-btn').style.display=(founders>=3&&!G.playerFaction)?'block':'none';
 }
 
 function renderPowerTiers(){
@@ -3605,7 +3640,7 @@ function renderSidebar(){
         <button class="gact" onclick="doTownHall()" ${phase!=='Session'||G.townHallThisTurn||G.player.capital<1?'disabled':''}><span>Host Solo Town Hall${G.townHallThisTurn?' <span style="font-size:9px;opacity:.6">(done)</span>':''}</span><span class="ac" style="background:var(--friendly);color:white">1 CP</span></button>
         <button class="gact" onclick="doDistrictMailer()" ${phase!=='Session'||G.mailerThisTurn||G.player.capital<1?'disabled':''}><span>Send District Mailer${G.mailerThisTurn?' <span style="font-size:9px;opacity:.6">(done)</span>':''}</span><span class="ac" style="background:var(--friendly);color:white">1 CP</span></button>
         <div class="sec-hdr">Your Actions</div>
-        ${!G.playerFaction&&G.reps.filter(r=>dispId(r.disposition)==='ally'||dispId(r.disposition)==='friendly').length>=2?`<button class="gact" onclick="showFoundFaction()"><span>Found Your Faction</span><span class="ac">Free</span></button>`:''}
+        ${!G.playerFaction&&eligibleFoundingMembers().length>=3?`<button class="gact" onclick="showFoundFaction()"><span>Found Your Faction</span><span class="ac">Free</span></button>`:''}
         ${canSeekLeader?`<button class="gact" onclick="seekLeadership()"><span>Seek Leadership Role</span><span class="ac">4 CP</span></button>`:''}
         ${canEndorse?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Endorse in Election: select a rep and use the action.</div>`:''}
         ${G.month===12&&!G.player.pos?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Tip: Select a committee chair → "Lobby for Committee Seat"</div>`:''}
