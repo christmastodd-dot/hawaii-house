@@ -100,13 +100,18 @@ body{
 .org-mem-title{font-size:10px;color:var(--muted);text-align:right;white-space:nowrap;flex-shrink:0;}
 .org-fac-tag{font-size:7.5px;font-weight:700;padding:1px 5px;border-radius:2px;color:white;flex-shrink:0;opacity:.85;}
 .org-empty{font-size:10px;color:var(--muted);padding:4px;font-style:italic;}
-.fc-block{display:flex;flex-direction:column;gap:3px;}
+.fc-block{display:flex;flex-direction:column;gap:3px;margin-bottom:16px;}
 .fc-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:2px 4px;border-radius:3px 3px 0 0;display:flex;align-items:center;gap:5px;}
 .fc-label-bar{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
 .fc-meta{font-size:9.5px;color:var(--muted);padding:0 4px 3px 17px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;letter-spacing:.02em;}
 .fc-meta b{color:var(--text,#ddd);font-weight:700;}
 .fc-meta .pill{padding:1px 5px;border-radius:3px;font-weight:700;font-size:9px;letter-spacing:.04em;color:#fff;}
-.fc-seats{display:flex;flex-wrap:wrap;gap:3px;}
+.fc-seats{display:flex;align-items:flex-start;gap:3px;}
+.fc-leaders{display:flex;gap:3px;flex-shrink:0;position:relative;}
+.fc-leaders::after{content:'leader';position:absolute;bottom:-10px;left:0;font-size:7.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);opacity:.7;}
+.fc-sep{width:2px;align-self:stretch;background:rgba(255,255,255,.12);margin:0 12px;min-height:41px;flex-shrink:0;}
+.fc-rest{display:flex;flex-wrap:wrap;gap:3px;flex:1;min-width:0;}
+.seat.is-leader{box-shadow:0 0 0 2px rgba(232,184,75,.55),0 4px 14px rgba(0,0,0,.45);}
 .crow{display:flex;gap:4px;justify-content:center;}
 .seat{
   width:41px;height:41px;border-radius:4px;cursor:pointer;
@@ -3119,8 +3124,24 @@ function renderChamber(){
         meta.innerHTML=html;
         block.appendChild(meta);
       }
+      // Split leader(s) from rank-and-file for visual separation
+      const isLeader=m=>{
+        if(g.kind==='player')return m.isPlayer; // player leads own caucus
+        if(g.kind==='npc'&&g.faction)return !m.isPlayer&&m.id===g.faction.leaderId;
+        return false;
+      };
+      const leaders=g.mems.filter(isLeader);
+      const rest=g.mems.filter(m=>!isLeader(m));
       const seats=document.createElement('div');seats.className='fc-seats';
-      g.mems.forEach(m=>seats.appendChild(makeSeat(m,'faction')));
+      if(leaders.length){
+        const lwrap=document.createElement('div');lwrap.className='fc-leaders';
+        leaders.forEach(m=>{const s=makeSeat(m,'faction');s.classList.add('is-leader');lwrap.appendChild(s);});
+        seats.appendChild(lwrap);
+        const sep=document.createElement('div');sep.className='fc-sep';seats.appendChild(sep);
+      }
+      const rwrap=document.createElement('div');rwrap.className='fc-rest';
+      rest.forEach(m=>rwrap.appendChild(makeSeat(m,'faction')));
+      seats.appendChild(rwrap);
       block.appendChild(seats);el.appendChild(block);
     });
   } else if(G.viewMode==='ideology'){
