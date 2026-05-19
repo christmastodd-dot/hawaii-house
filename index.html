@@ -902,6 +902,36 @@ function factionPopularity(memberReps){
   const friendly=real.filter(r=>r.disposition>=60&&r.disposition<80).length;
   return{avg,allies,friendly,n:real.length};
 }
+// ===== INTER-MEMBER RELATIONSHIPS =====
+function relValue(a,b){if(!a||!b||!a.relationships)return null;return a.relationships[b.id]??null;}
+function peerRapport(rep,peers){
+  if(!rep||!rep.relationships||!peers.length)return null;
+  const vals=peers.filter(p=>p&&p.id!==rep.id).map(p=>rep.relationships[p.id]).filter(v=>typeof v==='number');
+  if(!vals.length)return null;
+  return vals.reduce((s,v)=>s+v,0)/vals.length;
+}
+function rankedRelations(rep,opts){
+  if(!rep||!rep.relationships)return [];
+  const {peerIds=null,desc=true}=opts||{};
+  let entries=Object.entries(rep.relationships).map(([id,v])=>({id:+id,v}));
+  if(peerIds)entries=entries.filter(e=>peerIds.includes(e.id));
+  entries.sort((a,b)=>desc?b.v-a.v:a.v-b.v);
+  return entries;
+}
+function relLabel(v){
+  if(v>=75)return'close';
+  if(v>=60)return'friendly';
+  if(v>=45)return'cordial';
+  if(v>=30)return'distant';
+  return'frosty';
+}
+function relColor(v){
+  if(v>=75)return'var(--ally)';
+  if(v>=60)return'var(--friendly)';
+  if(v>=45)return'var(--neutral)';
+  if(v>=30)return'var(--cool)';
+  return'var(--hostile)';
+}
 function affinityDesc(a){
   if(a>.7)return'Very high — strong natural alignment.';
   if(a>.5)return'High — meaningful common ground.';
@@ -1662,17 +1692,28 @@ function npcFactionTurn(){
         evts.push(`Rep. ${t.last} joined the ${f.name}.`);
       }
     }
-    // Poach weak player faction member
+    // Poach weak player faction member — preference for those with a strong tie to a member of the poaching faction
     if(G.playerFaction&&G.playerFaction.members.length>2&&Math.random()<.04){
       const weak=G.reps.filter(r=>isInPlayerFaction(r.id)&&r.disposition<58&&!r.loyal);
       if(weak.length){
+        const factionMems=G.reps.filter(r=>r.factionId===f.id);
+        const scored=weak.map(w=>{
+          let bestTie=0,bestPeer=null;
+          factionMems.forEach(m=>{const v=w.relationships?.[m.id]||0;if(v>bestTie){bestTie=v;bestPeer=m;}});
+          return{w,bestTie,bestPeer};
+        }).sort((a,b)=>b.bestTie-a.bestTie);
+        const top=scored[0];
+        const usePull=top&&top.bestTie>=55&&Math.random()<.7;
+        const chosen=usePull?top:scored[Math.floor(Math.random()*scored.length)];
+        const t=chosen.w;
         const before=G.playerFaction.members.length;
-        const t=pick(weak);t.factionId=f.id;
+        t.factionId=f.id;
         G.playerFaction.members=G.playerFaction.members.filter(id=>id!==t.id);
         f.members.push(t.id);
         const after=G.playerFaction.members.length;
-        evts.push(`Rep. ${t.last} left your faction and joined the ${f.name}.`);
-        departures.push({rep:t,targetFaction:f,before,after});
+        const lure=usePull&&chosen.bestPeer?` — reportedly recruited personally by Rep. ${chosen.bestPeer.last}`:'';
+        evts.push(`Rep. ${t.last} left your faction and joined the ${f.name}${lure}.`);
+        departures.push({rep:t,targetFaction:f,before,after,luredBy:usePull?chosen.bestPeer:null});
       }
     }
   }
@@ -1807,19 +1848,36 @@ function speakerRaceNPC(){
   for(const cand of G.speakerRace.candidates){
     const undecided=G.reps.filter(r=>!r.pledge);
     const targets=undecided.sort(()=>Math.random()-.5).slice(0,rng(1,3));
+    // Peers who've already pledged to this candidate exert pull on close colleagues
+    const candPledged=G.reps.filter(r=>r.pledge===cand.factionId);
     targets.forEach(r=>{
-      if(Math.random()<.38){
+      let p=.38;
+      // Bonus if a close peer is already in this column
+      if(candPledged.length){
+        const bestTie=candPledged.reduce((max,c)=>Math.max(max,r.relationships?.[c.id]||0),0);
+        if(bestTie>=70)p+=.18;
+        else if(bestTie>=55)p+=.10;
+      }
+      if(Math.random()<p){
         r.pledge=cand.factionId;cand.pledges.push(r.id);
         const f=G.factions.find(f=>f.id===cand.factionId);
         addEvent(`Rep. ${r.last} pledged support to ${cand.leaderName} (${f?.name||'rival'}).`);
       }
     });
-    // Also try to flip weak player pledges
+    // Also try to flip weak player pledges — easier if a close peer is on the other side
     if(G.speakerRace.declared){
       const weak=G.reps.filter(r=>r.pledge==='player'&&r.disposition<55&&!r.loyal);
-      if(weak.length&&Math.random()<.12){
-        const t=pick(weak);t.pledge=cand.factionId;cand.pledges.push(t.id);
-        addEvent(`Rep. ${t.last} flipped from your column to ${cand.leaderName}'s.`);
+      if(weak.length){
+        const scored=weak.map(w=>{
+          const bestTie=candPledged.reduce((max,c)=>Math.max(max,w.relationships?.[c.id]||0),0);
+          return{w,bestTie};
+        }).sort((a,b)=>b.bestTie-a.bestTie);
+        const top=scored[0];
+        const flipP=.12+(top.bestTie>=70?.10:top.bestTie>=55?.05:0);
+        if(Math.random()<flipP){
+          const t=top.w;t.pledge=cand.factionId;cand.pledges.push(t.id);
+          addEvent(`Rep. ${t.last} flipped from your column to ${cand.leaderName}'s.`);
+        }
       }
     }
   }
@@ -2042,12 +2100,21 @@ function generateRumors(){
         ?`⚠ A story about Rep. ${r.last} involving ${type} is gaining traction in the press — colleagues are already keeping their distance.`
         :`🗣 Quiet buzz about Rep. ${r.last}: ${type}. Nothing public yet, but the Capitol grapevine is active.`};
     },
-    // Faction internal tensions
+    // Faction internal tensions — dissenter is the member with the lowest peer rapport in their faction
     ()=>{
       const f=pick(G.factions.filter(x=>x.members.length>=4));if(!f)return null;
-      const dissenter=pick(G.reps.filter(r=>r.factionId===f.id&&r.id!==f.leaderId));if(!dissenter)return null;
+      const facMems=G.reps.filter(r=>r.factionId===f.id&&r.id!==f.leaderId);
+      if(!facMems.length)return null;
+      const ranked=facMems.map(r=>({r,rap:peerRapport(r,facMems.filter(p=>p.id!==r.id))??50})).sort((a,b)=>a.rap-b.rap);
+      // Pick from the 3 lowest-rapport members
+      const dissenter=ranked.slice(0,Math.min(3,ranked.length))[Math.floor(Math.random()*Math.min(3,ranked.length))].r;
       const issue=pick(['a controversial floor vote','leadership style','committee assignment disputes','the faction\'s ideological drift','a rumored backroom deal with the other caucus']);
       dissenter.disposition=Math.max(18,dissenter.disposition-8);
+      // Slightly nudge the rapport down with their peers (the friction is real)
+      facMems.filter(p=>p.id!==dissenter.id).forEach(p=>{
+        if(dissenter.relationships)dissenter.relationships[p.id]=Math.max(0,(dissenter.relationships[p.id]||50)-rng(2,5));
+        if(p.relationships)p.relationships[dissenter.id]=Math.max(0,(p.relationships[dissenter.id]||50)-rng(2,5));
+      });
       return {repIds:[dissenter.id],text:`🗣 Rep. ${dissenter.last} is visibly frustrated with the ${f.name} over ${issue}. Sources say they've been quietly "shopping around" for a new political home — they may be recruitable.`};
     },
     // Warchest vulnerability
@@ -3538,6 +3605,17 @@ function renderSidebar(){
     <div class="ic">${ideoLabel(rep.ideology)}</div>
     <div class="ds"><div class="dh"><span>Disposition</span><span style="color:${dc};font-weight:700">${dl}</span></div><div class="db"><div class="df" style="width:${dp}%;background:${dc}"></div></div></div>
     <div class="afn">Affinity: ${affinityDesc(af)}</div>
+    ${(()=>{
+      if(!rep.relationships)return '';
+      const allies=rankedRelations(rep,{desc:true}).slice(0,2).filter(e=>e.v>=55);
+      const friction=rankedRelations(rep,{desc:false}).slice(0,1).filter(e=>e.v<=35);
+      if(!allies.length&&!friction.length)return '';
+      const tag=(e)=>{const o=G.reps.find(r=>r.id===e.id);if(!o)return '';return `<span class="rel-tag" onclick="selectRep(${o.id})" style="background:${relColor(e.v)};color:white;cursor:pointer;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;display:inline-block;margin:2px 4px 0 0;" title="${relLabel(e.v)} (${Math.round(e.v)}/100)">${o.last}</span>`;};
+      return `<div class="rels"><h4 style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:10px 0 4px;">Peer Relationships</h4>
+        ${allies.length?`<div style="font-size:10px;color:var(--muted);margin-bottom:2px">Closest in chamber</div><div>${allies.map(tag).join('')}</div>`:''}
+        ${friction.length?`<div style="font-size:10px;color:var(--muted);margin:6px 0 2px">Friction</div><div>${friction.map(tag).join('')}</div>`:''}
+      </div>`;
+    })()}
     ${rep.log.length?`<div class="rlog"><h4>History</h4>${rep.log.slice(-5).map(e=>`<div class="ll">${MONTHS[e.m-1].slice(0,3)} ${e.y}: ${e.text}</div>`).join('')}</div>`:''}
   </div>`;
   ap.style.display='block';
