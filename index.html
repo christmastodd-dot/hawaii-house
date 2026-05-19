@@ -118,6 +118,7 @@ body{
 }
 .seat::after{content:'';position:absolute;inset:0;border-radius:4px;background:linear-gradient(135deg,rgba(255,255,255,.14) 0%,transparent 55%);pointer-events:none;}
 .seat:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.55);z-index:10;}
+.seat .gos-badge{position:absolute;top:-4px;right:-4px;width:13px;height:13px;border-radius:50%;background:#e8b84b;color:#1a1a1f;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--bg);z-index:3;pointer-events:none;line-height:1;letter-spacing:0;font-family:'Inconsolata',monospace;box-shadow:0 0 0 1px rgba(0,0,0,.4);}
 .seat.sel{outline:2px solid var(--accent);outline-offset:2px;z-index:5;}
 .seat.me{outline:2px solid var(--accent);outline-offset:2px;cursor:default;box-shadow:0 0 14px var(--accent-glow);}
 .seat[data-d=player]{background:var(--player);}
@@ -359,6 +360,17 @@ body{
 #endorse-btn:hover{background:rgba(39,174,96,.22);}
 #endorse-panel{display:none;position:fixed;top:46px;left:0;width:340px;background:var(--surface);border:1px solid var(--border2);border-top:none;border-radius:0 0 6px 0;z-index:90;max-height:78vh;overflow-y:auto;box-shadow:6px 8px 24px rgba(0,0,0,.65);padding:10px 12px 14px;}
 #endorse-panel.open{display:block;}
+#gossip-panel{display:none;position:fixed;top:46px;left:0;width:380px;background:var(--surface);border:1px solid var(--border2);border-top:none;border-radius:0 0 6px 0;z-index:90;max-height:78vh;overflow-y:auto;box-shadow:6px 8px 24px rgba(0,0,0,.65);padding:10px 12px 14px;}
+#gossip-panel.open{display:block;}
+.gp-hdr{font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:4px 0 8px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.gp-empty{font-size:11px;color:var(--muted);font-style:italic;padding:8px 0;}
+.gp-entry{padding:7px 0;border-bottom:1px solid var(--border);font-size:11px;line-height:1.5;}
+.gp-entry:last-child{border-bottom:none;}
+.gp-date{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;font-family:'Inconsolata',monospace;}
+.gp-text{color:var(--text,#ddd);}
+.gp-refs{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;}
+.gp-ref{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(232,184,75,.14);color:#e8b84b;cursor:pointer;border:1px solid rgba(232,184,75,.28);}
+.gp-ref:hover{background:rgba(232,184,75,.28);}
 .union-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
 .union-row:hover{background:var(--surface2);}
 .union-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
@@ -376,6 +388,7 @@ body{
   <button id="war-btn" onclick="toggleWarchestPanel()">$ War Chests</button>
   <button id="fac-pt-btn" onclick="toggleFacPtPanel()">Factions &amp; Tiers</button>
   <button id="endorse-btn" onclick="toggleEndorsePanel()">🤝 Endorsements</button>
+  <button id="gossip-btn" onclick="toggleGossipPanel()">🗣 Gossip</button>
   <div class="hs"><span class="l">Date</span><span class="v" id="h-date">—</span></div>
   <div class="hs"><span class="l">Phase</span><span class="v" id="h-phase">—</span></div>
   <div class="hs"><span class="l">Capital</span><span class="v" id="h-cap">—</span><div class="pips" id="h-pips"></div></div>
@@ -401,6 +414,7 @@ body{
   <div id="legend"></div>
 </div>
 <div id="endorse-panel"></div>
+<div id="gossip-panel"></div>
 <div id="banner"></div>
 
 <div id="race-bar">
@@ -800,6 +814,7 @@ let G={
   endorsements:{},
   gameOver:false,gameWon:false,
   careerStats:{turns:0,capitalSpent:0,peakFaction:0,speakerAttempts:0},
+  gossipLog:[],
 };
 
 // ===== UTILS =====
@@ -1991,9 +2006,9 @@ function generateRumors(){
       const r=pick(veterans.length?veterans:all);if(!r)return null;
       const serious=Math.random()<0.35;
       if(serious&&r.factionId){const f=G.factions.find(x=>x.id===r.factionId);if(f)f.members.filter(id=>id!==r.id).slice(0,2).forEach(id=>{const m=G.reps.find(x=>x.id===id);if(m)m.disposition=Math.max(20,m.disposition-5);});}
-      return serious
+      return {repIds:[r.id],text:serious
         ?`🗣 Rep. ${r.last} (${distName(r.district)}, ${r.seniority} terms) has been telling close colleagues they likely won't seek re-election. Their faction is already quietly unsettled — some members are looking for a new political home.`
-        :`🗣 Word in the Capitol: Rep. ${r.last} is "weighing options outside the House." Nothing confirmed, but several colleagues are paying attention.`;
+        :`🗣 Word in the Capitol: Rep. ${r.last} is "weighing options outside the House." Nothing confirmed, but several colleagues are paying attention.`};
     },
     // Brewing personal scandal
     ()=>{
@@ -2001,9 +2016,9 @@ function generateRumors(){
       const escalates=Math.random()<0.3;
       if(escalates){r.disposition=Math.max(15,r.disposition-12);r.powerMod=(r.powerMod||0)-10;}
       const type=pick(['unreported campaign contributions','a series of unexplained absences','a heated confrontation with a lobbyist that was overheard','expense account discrepancies','allegations surfacing from a former staffer']);
-      return escalates
+      return {repIds:[r.id],text:escalates
         ?`⚠ A story about Rep. ${r.last} involving ${type} is gaining traction in the press — colleagues are already keeping their distance.`
-        :`🗣 Quiet buzz about Rep. ${r.last}: ${type}. Nothing public yet, but the Capitol grapevine is active.`;
+        :`🗣 Quiet buzz about Rep. ${r.last}: ${type}. Nothing public yet, but the Capitol grapevine is active.`};
     },
     // Faction internal tensions
     ()=>{
@@ -2011,19 +2026,19 @@ function generateRumors(){
       const dissenter=pick(G.reps.filter(r=>r.factionId===f.id&&r.id!==f.leaderId));if(!dissenter)return null;
       const issue=pick(['a controversial floor vote','leadership style','committee assignment disputes','the faction\'s ideological drift','a rumored backroom deal with the other caucus']);
       dissenter.disposition=Math.max(18,dissenter.disposition-8);
-      return `🗣 Rep. ${dissenter.last} is visibly frustrated with the ${f.name} over ${issue}. Sources say they've been quietly "shopping around" for a new political home — they may be recruitable.`;
+      return {repIds:[dissenter.id],text:`🗣 Rep. ${dissenter.last} is visibly frustrated with the ${f.name} over ${issue}. Sources say they've been quietly "shopping around" for a new political home — they may be recruitable.`};
     },
     // Warchest vulnerability
     ()=>{
       const weak=G.reps.filter(r=>r.warchest<20000&&r.seniority<4);
       const r=pick(weak.length?weak:G.reps.filter(r=>r.warchest<30000));if(!r)return null;
-      return `🗣 Rep. ${r.last} (${distName(r.district)}) is reportedly well below average on fundraising — well under the median warchest. Political operatives in their district are already making calls about a potential challenger.`;
+      return {repIds:[r.id],text:`🗣 Rep. ${r.last} (${distName(r.district)}) is reportedly well below average on fundraising — well under the median warchest. Political operatives in their district are already making calls about a potential challenger.`};
     },
     // Speakership ambition
     ()=>{
       const r=pick(factionLeaders.filter(x=>x.pos!=='speaker'));if(!r)return null;
       const f=G.factions.find(x=>x.leaderId===r.id);
-      return `🗣 Sources say Rep. ${r.last}'s team is quietly taking stock of potential floor support — the word "speakership" has come up more than once in private conversations. The ${f?.name||''} currently has ${f?.members.length||0} members.`;
+      return {repIds:[r.id],text:`🗣 Sources say Rep. ${r.last}'s team is quietly taking stock of potential floor support — the word "speakership" has come up more than once in private conversations. The ${f?.name||''} currently has ${f?.members.length||0} members.`};
     },
     // Alliance forming
     ()=>{
@@ -2031,28 +2046,28 @@ function generateRumors(){
       const r2=pick(factionLeaders.filter(r=>r.id!==r1.id&&r.party===r1.party));if(!r2)return null;
       const deepening=Math.random()<0.25;
       if(deepening){r1.disposition=Math.min(100,r1.disposition+5);r2.disposition=Math.min(100,r2.disposition+5);}
-      return deepening
+      return {repIds:[r1.id,r2.id],text:deepening
         ?`🗣 Reps. ${r1.last} and ${r2.last} have been meeting privately multiple times this month — Capitol insiders say a formal alliance between their factions may be taking shape.`
-        :`🗣 Reps. ${r1.last} and ${r2.last} were seen having lunch together at the Capitol Café. No comment from either office, but the timing is notable.`;
+        :`🗣 Reps. ${r1.last} and ${r2.last} were seen having lunch together at the Capitol Café. No comment from either office, but the timing is notable.`};
     },
     // District trouble for another rep
     ()=>{
       const r=pick(all);if(!r)return null;
       const trouble=pick(['backlash over their recent vote on housing funding','a viral clip from a contentious town hall','a pointed op-ed in their local paper','constituent complaints about unresponsive constituent services','a local political committee endorsing a potential challenger']);
-      return `🗣 Rep. ${r.last} is dealing with ${trouble} back in ${distName(r.district)}. Some political observers say their district approval may be slipping.`;
+      return {repIds:[r.id],text:`🗣 Rep. ${r.last} is dealing with ${trouble} back in ${distName(r.district)}. Some political observers say their district approval may be slipping.`};
     },
     // Speaker power move
     ()=>{
       const spk=G.reps.find(r=>r.pos==='speaker');if(!spk)return null;
       const move=pick(['reassigning committee chairs without notice','blocking a floor vote on a popular bill','calling in long-standing favors ahead of a contentious vote','quietly threatening to back a primary challenger against a disloyal member','cutting a faction off from key committee assignments']);
-      return `🗣 Speaker ${spk.last} has been reportedly ${move}. A quiet reminder that the gavel still controls the floor — and the careers that depend on it.`;
+      return {repIds:[spk.id],text:`🗣 Speaker ${spk.last} has been reportedly ${move}. A quiet reminder that the gavel still controls the floor — and the careers that depend on it.`};
     },
     // Positive word about player spreading
     ()=>{
       const r=pick(introduced);if(!r)return null;
       r.disposition=Math.min(100,r.disposition+5);
       const item=pick(['praised your constituent outreach at a caucus breakfast','mentioned your name favorably in a conversation with leadership','been telling colleagues you\'re someone worth knowing','quietly advocated for you in a committee discussion']);
-      return `🗣 Word has it that Rep. ${r.last} has ${item}. These things have a way of mattering more than people think.`;
+      return {repIds:[r.id],text:`🗣 Word has it that Rep. ${r.last} has ${item}. These things have a way of mattering more than people think.`};
     },
   ];
   const shuffled=[...pool].sort(()=>Math.random()-0.5);
@@ -2061,6 +2076,18 @@ function generateRumors(){
     const t=fn();if(t)rumors.push(t);
   }
   return rumors;
+}
+// Gossip / rumor log helpers
+function monthsAgo(m,y){return (G.year-y)*12+(G.month-m);}
+function hasRecentGossip(repId,window){
+  const w=window==null?2:window;
+  if(!G.gossipLog||!G.gossipLog.length)return false;
+  return G.gossipLog.some(g=>g.repIds&&g.repIds.includes(repId)&&monthsAgo(g.month,g.year)<=w&&monthsAgo(g.month,g.year)>=0);
+}
+function recordGossip(entries){
+  if(!G.gossipLog)G.gossipLog=[];
+  entries.forEach(e=>{G.gossipLog.unshift({text:e.text,repIds:e.repIds||[],month:G.month,year:G.year});});
+  while(G.gossipLog.length>80)G.gossipLog.pop();
 }
 
 function buildElectionBarGraph(playerPct,chalPct,playerName,chalName,playerParty,chalParty,raceTitle){
@@ -2229,7 +2256,8 @@ function endTurn(){
   const polEvt=Math.random()<.3?politicalEventFire():null;
   if(polEvt)addEvent(polEvt);
   const npcEvtList=generateRumors();
-  npcEvtList.forEach(e=>addEvent(e));
+  recordGossip(npcEvtList);
+  npcEvtList.forEach(e=>addEvent(e.text));
   const factionTurn=npcFactionTurn();
   factionTurn.evts.forEach(e=>addEvent(e));
   G._departures=factionTurn.departures;
@@ -2393,7 +2421,7 @@ function endTurn(){
     // Political event (if any)
     if(polEvt) cards.push({title:mTitle,sub:'Political Event',html:`<div class="msec"><div class="mev" style="font-size:13px;line-height:1.7">${polEvt}</div></div>`});
     // Capitol rumors — one card each
-    npcEvtList.forEach(e=>cards.push({title:mTitle,sub:'Capitol Rumor',html:`<div class="msec"><div class="mev" style="font-size:13px;line-height:1.7">${e}</div></div>`}));
+    npcEvtList.forEach(e=>cards.push({title:mTitle,sub:'Capitol Rumor',html:`<div class="msec"><div class="mev" style="font-size:13px;line-height:1.7">${e.text}</div></div>`}));
     // Faction departure
     if(deps.length) cards.push({title:'⚠ Caucus Departure',sub:mTitle,html:deptChartHTML(deps)});
     // New challenger declarations — one card each
@@ -2649,6 +2677,7 @@ function toggleEndorsePanel(){
   const wasOpen=p.classList.contains('open');
   document.getElementById('warchest-panel').classList.remove('open');
   document.getElementById('fac-pt-panel').classList.remove('open');
+  document.getElementById('gossip-panel').classList.remove('open');
   if(!wasOpen){p.classList.add('open');renderEndorsePanel();}
   else p.classList.remove('open');
 }
@@ -2769,8 +2798,51 @@ function toggleFacPtPanel(){
   const p=document.getElementById('fac-pt-panel');
   const wasOpen=p.classList.contains('open');
   document.getElementById('warchest-panel').classList.remove('open');
+  document.getElementById('endorse-panel').classList.remove('open');
+  document.getElementById('gossip-panel').classList.remove('open');
   if(!wasOpen){p.classList.add('open');renderFactions();renderPowerTiers();renderLegend();}
   else{p.classList.remove('open');}
+}
+
+function toggleGossipPanel(){
+  const p=document.getElementById('gossip-panel');
+  const wasOpen=p.classList.contains('open');
+  document.getElementById('warchest-panel').classList.remove('open');
+  document.getElementById('fac-pt-panel').classList.remove('open');
+  document.getElementById('endorse-panel').classList.remove('open');
+  if(!wasOpen){p.classList.add('open');renderGossipPanel();}
+  else p.classList.remove('open');
+}
+function renderGossipPanel(){
+  const p=document.getElementById('gossip-panel');p.innerHTML='';
+  const hdr=document.createElement('div');hdr.className='gp-hdr';
+  const total=G.gossipLog?.length||0;
+  hdr.textContent=`Capitol Gossip — running log${total?` · ${total} item${total>1?'s':''}`:''}`;
+  p.appendChild(hdr);
+  if(!total){
+    const empty=document.createElement('div');empty.className='gp-empty';empty.textContent='No rumors have circulated yet. Check back after the next end-of-month.';
+    p.appendChild(empty);return;
+  }
+  G.gossipLog.forEach(g=>{
+    const e=document.createElement('div');e.className='gp-entry';
+    const ago=monthsAgo(g.month,g.year);
+    const recent=ago<=2;
+    const date=document.createElement('div');date.className='gp-date';
+    date.textContent=`${MONTHS[g.month-1].slice(0,3)} ${g.year}${recent?' · recent':''}`;
+    e.appendChild(date);
+    const t=document.createElement('div');t.className='gp-text';t.textContent=g.text;e.appendChild(t);
+    if(g.repIds&&g.repIds.length){
+      const refs=document.createElement('div');refs.className='gp-refs';
+      g.repIds.forEach(id=>{
+        const r=G.reps.find(x=>x.id===id);if(!r)return;
+        const tag=document.createElement('span');tag.className='gp-ref';tag.textContent=r.last;
+        tag.onclick=()=>{toggleGossipPanel();selectRep(r.id);};
+        refs.appendChild(tag);
+      });
+      if(refs.childNodes.length)e.appendChild(refs);
+    }
+    p.appendChild(e);
+  });
 }
 
 // Close dropdown panels when clicking outside
@@ -2784,6 +2856,9 @@ document.addEventListener('click',e=>{
   const ep=document.getElementById('endorse-panel');
   const eb=document.getElementById('endorse-btn');
   if(ep&&eb&&!ep.contains(e.target)&&!eb.contains(e.target))ep.classList.remove('open');
+  const gp=document.getElementById('gossip-panel');
+  const gb=document.getElementById('gossip-btn');
+  if(gp&&gb&&!gp.contains(e.target)&&!gb.contains(e.target))gp.classList.remove('open');
 },{capture:true,passive:true});
 
 function setView(mode){
@@ -2818,6 +2893,10 @@ function makeSeat(m,viewMode){
     const star=document.createElement('span');star.textContent='★';star.style.color='#ffd700';s.appendChild(star);
   } else {
     s.textContent=isCandidate?nameTrunc+'★':nameTrunc;
+  }
+  if(!m.isPlayer&&hasRecentGossip(m.id)){
+    const b=document.createElement('span');b.className='gos-badge';b.textContent='!';b.title='In the rumor mill recently — see Gossip log';
+    s.appendChild(b);
   }
   s.onmouseenter=e=>showTip(e,m);s.onmouseleave=hideTip;
   if(m.isPlayer){s.onclick=()=>{G.selected=null;renderSidebar();};}
@@ -3422,6 +3501,7 @@ function renderSidebar(){
     ${pl?`<div class="ptag">${pl}</div>`:''}${facName?`<span class="ftag" style="background:${getFactionColor(rep)}">${facName}${inPF?' ★':''}</span>`:''}
     ${pledgeLabel?`<div class="pledge-badge" style="background:${pledgeColor}">${pledgeLabel}</div>`:''}
     ${rep.loyal?`<div style="font-size:10px;color:var(--ally);margin-bottom:6px">● Loyal faction member</div>`:''}
+    ${hasRecentGossip(rep.id)?`<div onclick="toggleGossipPanel()" style="font-size:10px;color:#e8b84b;margin-bottom:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px solid rgba(232,184,75,.4);border-radius:3px;background:rgba(232,184,75,.08);" title="Click to open Gossip log">! In the rumor mill recently</div>`:''}
     <div class="sgrid" style="margin-top:10px">
       <div class="sbox"><div class="sl">Age</div><div class="sv">${rep.age}</div></div>
       <div class="sbox"><div class="sl">Seniority</div><div class="sv">${rep.seniority===0?'Freshman':rep.seniority+(rep.seniority===1?' term':' terms')}</div></div>
