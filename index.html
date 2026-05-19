@@ -358,6 +358,8 @@ body{
 /* ENDORSEMENTS */
 #endorse-btn{font-size:10px;font-weight:700;color:#27ae60;background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.3);border-radius:3px;padding:4px 10px;cursor:pointer;transition:background .15s;white-space:nowrap;display:none;}
 #endorse-btn:hover{background:rgba(39,174,96,.22);}
+#gossip-btn{font-size:10px;font-weight:700;color:#e8b84b;background:rgba(232,184,75,.1);border:1px solid rgba(232,184,75,.3);border-radius:3px;padding:4px 10px;cursor:pointer;transition:background .15s;white-space:nowrap;}
+#gossip-btn:hover{background:rgba(232,184,75,.22);}
 #endorse-panel{display:none;position:fixed;top:46px;left:0;width:340px;background:var(--surface);border:1px solid var(--border2);border-top:none;border-radius:0 0 6px 0;z-index:90;max-height:78vh;overflow-y:auto;box-shadow:6px 8px 24px rgba(0,0,0,.65);padding:10px 12px 14px;}
 #endorse-panel.open{display:block;}
 #gossip-panel{display:none;position:fixed;top:46px;left:0;width:380px;background:var(--surface);border:1px solid var(--border2);border-top:none;border-radius:0 0 6px 0;z-index:90;max-height:78vh;overflow-y:auto;box-shadow:6px 8px 24px rgba(0,0,0,.65);padding:10px 12px 14px;}
@@ -1160,8 +1162,28 @@ const ACTIONS=[
    do(rep){if(G.donatedTo.includes(rep.id)){addEvent(`You already donated to Rep. ${rep.last} this election cycle.`);return false;}if(G.player.warchest<2000){addEvent('Your warchest is too thin for a donation right now.');return false;}G.player.warchest-=2000;rep.warchest+=2000;G.donatedTo.push(rep.id);const b=Math.round(affinity(G.player,rep)*6)+5;rep.disposition=Math.min(100,rep.disposition+b);rep.log.push({m:G.month,y:G.year,text:'Received a $2,000 campaign donation from you.'});addEvent(`You donated $2,000 to Rep. ${rep.last}'s campaign. Real appreciation expressed.`);}},
   {id:'cosponsor',label:'Co-sponsor a Bill',cost:2,needsIntro:true,hideAfterIntro:false,phase:'session',desc:'Sign onto their legislation. Signals shared priorities.',
    do(rep){const b=Math.round(affinity(G.player,rep)*5)+6;rep.disposition=Math.min(100,rep.disposition+b);const sp=G.reps.filter(r=>r.introduced&&r.id!==rep.id&&Math.abs(r.ideology-rep.ideology)<=10).slice(0,3);sp.forEach(r=>r.disposition=Math.min(100,r.disposition+3));const bill=pick(['affordable housing bill','clean energy bill','education funding measure','tourism reform act','water conservation bill','workforce development bill']);rep.log.push({m:G.month,y:G.year,text:`You co-sponsored their ${bill}.`});addEvent(`You co-sponsored Rep. ${rep.last}'s ${bill}.${sp.length?` Also warmed relations with ${sp.length} colleague${sp.length>1?'s':''}.`:''}`);}},
-  {id:'committee-maneuver',label:'Committee Maneuver',cost:3,needsIntro:true,hideAfterIntro:false,phase:'any',requiresPlayerPos:true,desc:'Use your committee position to advance their priorities.',
-   do(rep){if(!G.player.pos){addEvent('You need a committee position first.');return false;}const b=Math.round(affinity(G.player,rep)*6)+8;rep.disposition=Math.min(100,rep.disposition+b);const opp=G.reps.filter(r=>r.introduced&&r.ideology>rep.ideology+20);opp.slice(0,2).forEach(r=>r.disposition=Math.max(0,r.disposition-4));rep.log.push({m:G.month,y:G.year,text:`You advanced their priorities in committee.`});addEvent(`You used your committee position to advance Rep. ${rep.last}'s priorities.${opp.length?` Rep. ${opp[0].last} and others were not pleased.`:''}`);}},
+  {id:'committee-maneuver',label:'Committee Maneuver',cost:3,needsIntro:true,hideAfterIntro:false,phase:'session',requiresPlayerPos:true,desc:'Use your committee position to advance their priorities. Impact scales with your power tier.',
+   do(rep){
+     if(!G.player.pos){addEvent('You need a committee position first.');return false;}
+     const tier=getPowerTier(G.player.pos);
+     const tierMult={1:2.6,2:2.0,3:1.6,4:1.3,5:1.0}[tier]||1.0;
+     const base=Math.round(affinity(G.player,rep)*6)+8;
+     const b=Math.round(base*tierMult);
+     rep.disposition=Math.min(100,rep.disposition+b);
+     const oppHit=Math.min(5,Math.round(4*tierMult));
+     const oppCount=tier<=2?4:tier===3?3:2;
+     const opp=G.reps.filter(r=>r.introduced&&r.ideology>rep.ideology+20);
+     opp.slice(0,oppCount).forEach(r=>r.disposition=Math.max(0,r.disposition-oppHit));
+     const flavor={
+       1:'set the floor schedule to clear the way for',
+       2:'used your leadership perch to muscle through',
+       3:'leaned on a chair to fast-track',
+       4:'used your chair gavel to advance',
+       5:'used your committee seat to advance',
+     }[tier];
+     rep.log.push({m:G.month,y:G.year,text:`You ${flavor} their priorities (+${b} disposition).`});
+     addEvent(`You ${flavor} Rep. ${rep.last}'s priorities.${opp.length?` Rep. ${opp[0].last} and others were not pleased.`:''} (+${b})`);
+   }},
   {id:'recruit',label:'Recruit to Your Faction',cost:3,needsIntro:true,hideAfterIntro:false,phase:'any',requiresFaction:true,requiresDisp:60,desc:'Formally invite them into your faction. Requires Ally for a real chance; Friendly is a long shot.',
    do(rep){
      if(!G.playerFaction){addEvent('Found a faction first.');return false;}
