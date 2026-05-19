@@ -144,6 +144,7 @@ body{
 .frow.pf{background:rgba(40,116,166,.12);border-left-color:var(--player);}
 .fswatch{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
 .fname{font-size:11px;font-weight:600;flex:1;}
+.fedit:hover{opacity:1 !important;color:var(--player);}
 .fleader{font-size:10px;color:var(--muted);font-style:italic;}
 .fcount{font-size:10px;color:var(--muted);font-family:'Inconsolata',monospace;}
 
@@ -728,21 +729,21 @@ const DISTRICT_BILLS={
 };
 // Faction template pools — picked randomly to create 5-10 factions per game
 const FACTION_POOL_D=[
-  {id:'prog',        name:'Progressive Alliance',        color:'#3a6fa5',party:'D',ideoMin:1, ideoMax:42,strategy:'ideology'},
-  {id:'labor',       name:'Labor & Working Families',    color:'#2e5ea5',party:'D',ideoMin:10,ideoMax:55,strategy:'seniority'},
-  {id:'reform',      name:'Reform Democrats',            color:'#2e7a6b',party:'D',ideoMin:25,ideoMax:62,strategy:'warchest'},
-  {id:'urban',       name:'Urban Coalition',             color:'#5b5eb5',party:'D',ideoMin:18,ideoMax:60,strategy:'warchest'},
-  {id:'enviro',      name:'Environmental Caucus',        color:'#2d8a5a',party:'D',ideoMin:1, ideoMax:50,strategy:'ideology'},
-  {id:'rural-d',     name:'Neighbor Island Democrats',   color:'#4a8a6b',party:'D',strategy:'district'},
-  {id:'senior-d',    name:'Senior Democrats',            color:'#5a4ea5',party:'D',ideoMin:1, ideoMax:70,strategy:'seniority',senMin:4},
-  {id:'centrist-d',  name:'Centrist Democrats',          color:'#3a7a9e',party:'D',ideoMin:38,ideoMax:68,strategy:'warchest'},
+  {id:'prog',        name:'The Plumeria Caucus',         color:'#3a6fa5',party:'D',ideoMin:1, ideoMax:42,strategy:'ideology'},
+  {id:'labor',       name:'Hard Hat Hui',                color:'#2e5ea5',party:'D',ideoMin:10,ideoMax:55,strategy:'seniority'},
+  {id:'reform',      name:'Fresh Catch Caucus',          color:'#2e7a6b',party:'D',ideoMin:25,ideoMax:62,strategy:'warchest'},
+  {id:'urban',       name:'Skyline Set',                 color:'#5b5eb5',party:'D',ideoMin:18,ideoMax:60,strategy:'warchest'},
+  {id:'enviro',      name:'Reef Keepers',                color:'#2d8a5a',party:'D',ideoMin:1, ideoMax:50,strategy:'ideology'},
+  {id:'rural-d',     name:'Coconut Wireless',            color:'#4a8a6b',party:'D',strategy:'district'},
+  {id:'senior-d',    name:'Kūpuna Council',              color:'#5a4ea5',party:'D',ideoMin:1, ideoMax:70,strategy:'seniority',senMin:4},
+  {id:'centrist-d',  name:'Bridge Builders',             color:'#3a7a9e',party:'D',ideoMin:38,ideoMax:68,strategy:'warchest'},
 ];
 const FACTION_POOL_R=[
-  {id:'mod-rep',     name:'Moderate Republicans',        color:'#c06040',party:'R',ideoMin:45,ideoMax:72,strategy:'warchest'},
-  {id:'cons-rep',    name:'Conservative Caucus',         color:'#9e3520',party:'R',ideoMin:65,ideoMax:100,strategy:'ideology'},
-  {id:'biz-rep',     name:'Business Republicans',        color:'#b05828',party:'R',strategy:'warchest'},
-  {id:'rural-rep',   name:'Rural Republicans',           color:'#8a4a1e',party:'R',strategy:'district'},
-  {id:'fiscal-rep',  name:'Fiscal Responsibility Caucus',color:'#a03828',party:'R',ideoMin:58,ideoMax:100,strategy:'seniority'},
+  {id:'mod-rep',     name:'Country Club Caucus',         color:'#c06040',party:'R',ideoMin:45,ideoMax:72,strategy:'warchest'},
+  {id:'cons-rep',    name:'Tiki Torch Brigade',          color:'#9e3520',party:'R',ideoMin:65,ideoMax:100,strategy:'ideology'},
+  {id:'biz-rep',     name:'Boardroom Hui',               color:'#b05828',party:'R',strategy:'warchest'},
+  {id:'rural-rep',   name:'Pickup Truck Crew',           color:'#8a4a1e',party:'R',strategy:'district'},
+  {id:'fiscal-rep',  name:'Spreadsheet Squad',           color:'#a03828',party:'R',ideoMin:58,ideoMax:100,strategy:'seniority'},
 ];
 const ETHNICITIES=[
   {id:'japanese',label:'Japanese American',w:25},{id:'white',label:'White',w:20},
@@ -1544,6 +1545,24 @@ function showFoundFaction(){
     closeModal();render();
   };
   document.getElementById('overlay').classList.add('active');
+}
+
+function renameFaction(fid){
+  const f=fid==='player'?G.playerFaction:G.factions.find(f=>f.id===fid);
+  if(!f)return;
+  const safe=f.name.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  showModal('Rename Faction','Pick a new name for the caucus',()=>`
+    <div class="msec"><div class="fr"><label>Faction Name</label><input id="rf-name" type="text" maxlength="40" value="${safe}"></div>
+    <div class="mev">Names are flavor only — grouping and color stay the same.</div></div>`);
+  document.getElementById('mok').textContent='Save →';
+  document.getElementById('mok').onclick=()=>{
+    const n=document.getElementById('rf-name').value.trim();
+    if(n)f.name=n;
+    document.getElementById('mok').onclick=closeModal;
+    document.getElementById('mok').textContent='Continue →';
+    closeModal();render();
+  };
+  setTimeout(()=>{const i=document.getElementById('rf-name');if(i){i.focus();i.select();i.onkeydown=(e)=>{if(e.key==='Enter')document.getElementById('mok').click();};}},10);
 }
 
 // ===== NPC AI =====
@@ -3135,8 +3154,9 @@ function renderFactions(){
     const fIsCandidate=!isp&&G.speakerRace?.active&&G.speakerRace.candidates.some(c=>c.factionId===f.id);
     const pIsCandidate=isp&&G.speakerRace?.declared;
     const leaderIsSpk=leader&&(isp?G.player.pos:leader.pos)==='speaker';
-    row.innerHTML=`<div class="fswatch" style="background:${f.color}"></div><span class="fname">${f.name}${fIsCandidate||pIsCandidate?` <span style="color:#e8b84b">★</span>`:''}</span><span class="fleader" style="color:${isp?'var(--player)':f.color}">${leader?`★ ${leader.last}${leaderIsSpk?' <span style="color:#ffd700">★</span>':''}`:''}</span><span class="fcount">${f.members.length}m</span><span style="margin-left:auto;font-size:10px;opacity:.5">${expanded?'▾':'▸'}</span>`;
+    row.innerHTML=`<div class="fswatch" style="background:${f.color}"></div><span class="fname" style="flex:0 1 auto;">${f.name}${fIsCandidate||pIsCandidate?` <span style="color:#e8b84b">★</span>`:''}</span><span class="fedit" title="Rename faction" data-fid="${f.id}" style="opacity:.4;font-size:10px;cursor:pointer;padding:0 2px;flex:0 0 auto;">✎</span><span class="fleader" style="color:${isp?'var(--player)':f.color};flex:1;">${leader?`★ ${leader.last}${leaderIsSpk?' <span style="color:#ffd700">★</span>':''}`:''}</span><span class="fcount">${f.members.length}m</span><span style="margin-left:auto;font-size:10px;opacity:.5">${expanded?'▾':'▸'}</span>`;
     row.onclick=()=>{G.expandedFactions[f.id]=!G.expandedFactions[f.id];renderFactions();};
+    row.querySelector('.fedit').onclick=(e)=>{e.stopPropagation();renameFaction(f.id);};
     wrap.appendChild(row);
     if(expanded){
       const clust=document.createElement('div');clust.className='fcluster';
