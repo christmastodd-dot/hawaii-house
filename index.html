@@ -2952,7 +2952,10 @@ function renderChamber(){
     groups.forEach(g=>{
       const block=document.createElement('div');block.className='fc-block';
       const lbl=document.createElement('div');lbl.className='fc-label';
-      lbl.innerHTML=`<div class="fc-label-bar" style="background:${g.color}"></div><span style="color:${g.color}">${g.name}</span><span style="opacity:.4;font-weight:400;margin-left:2px">(${g.mems.length})</span>`;
+      const canEdit=g.kind==='npc'||(g.kind==='player'&&G.playerFaction);
+      const editId=g.kind==='player'?'player':(g.faction&&g.faction.id);
+      lbl.innerHTML=`<div class="fc-label-bar" style="background:${g.color}"></div><span style="color:${g.color}">${g.name}</span>${canEdit?`<span class="fedit" title="Rename faction" style="opacity:.45;font-size:10px;cursor:pointer;padding:0 3px;font-weight:400;">✎</span>`:''}<span style="opacity:.4;font-weight:400;margin-left:2px">(${g.mems.length})</span>`;
+      if(canEdit){const ed=lbl.querySelector('.fedit');if(ed)ed.onclick=(e)=>{e.stopPropagation();renameFaction(editId);};}
       block.appendChild(lbl);
       // Per-faction metrics
       const pop=factionPopularity(g.mems);
