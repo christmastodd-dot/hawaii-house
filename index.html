@@ -888,6 +888,7 @@ function affinity(player,rep){
 function factionJoinChance(f){
   if(!f||!f.leaderId&&f.id!=='player')return null;
   if(f.id==='player')return null;
+  if(G.player.factionId===f.id)return null;
   if(f.party&&f.party!==G.player.party)return null;
   const leader=G.reps.find(r=>r.id===f.leaderId);
   if(!leader)return null;
@@ -1241,16 +1242,21 @@ const ACTIONS=[
      if(!f){addEvent('Rep. '+rep.last+' does not lead a faction.');return false;}
      if(f.party!==G.player.party){addEvent(`The ${f.name} is a ${f.party==='D'?'Democratic':'Republican'} faction — you cannot join across party lines.`);return false;}
      const chance=Math.min(.85,.40+affinity(G.player,rep)*.5+(rep.disposition-40)/150);
-     if(Math.random()<chance){
-       const xferred=[];
+     const success=Math.random()<chance;
+     const xferred=[];
+     if(success){
        if(G.playerFaction){
          G.playerFaction.members.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r){r.factionId=f.id;if(!f.members.includes(r.id))f.members.push(r.id);xferred.push(r.last);}});
          addEvent(`The ${G.playerFaction.name} has been absorbed into the ${f.name}.`);
          G.playerFaction=null;
        }
+       G.player.factionId=f.id;
        rep.log.push({m:G.month,y:G.year,text:`Welcomed you into the ${f.name}.`});
        addEvent(`Rep. ${rep.last} welcomed you into the ${f.name}.${xferred.length?` Your ${xferred.length} former faction member${xferred.length>1?'s':''} joined as well.`:''} You may still form a new faction or run for Speaker.`);
-     }else{addEvent(`Rep. ${rep.last} was polite but declined — your factions remain separate.`);}
+     }else{
+       addEvent(`Rep. ${rep.last} was polite but declined — your factions remain separate.`);
+     }
+     showJoinOutcome({success,rep,faction:f,chancePct:Math.round(chance*100),xferred});
    }},
   {id:'lobby-committee',label:'Lobby for Committee Seat',cost:3,needsIntro:true,hideAfterIntro:false,phase:'dec',requiresChair:true,desc:'Ask this chair to appoint you Vice Chair.',
    do(rep){if(!rep.pos||!rep.pos.startsWith('chair-')){addEvent('Target a committee chair.');return false;}if(G.player.pos){addEvent('You already hold a position.');return false;}const ci=parseInt(rep.pos.split('-')[1]);const chance=Math.min(.8,.25+affinity(G.player,rep)*.5+(rep.disposition-35)/150);if(Math.random()<chance){const ov=G.reps.find(r=>r.pos===`vc-${ci}`);if(ov)ov.pos=null;G.player.pos=`vc-${ci}`;G.player.capital=calcCapital(G.player);rep.log.push({m:G.month,y:G.year,text:`Appointed you Vice Chair of ${COMMITTEES[ci]}.`});addEvent(`Rep. ${rep.last} appointed you Vice Chair of ${COMMITTEES[ci]}. +1 capital/month.`);}else{addEvent(`Rep. ${rep.last} was appreciative but couldn't offer the seat right now.`);}}},
@@ -1421,6 +1427,7 @@ function availableActions(rep){
     if(a.requiresSecondSession&&!secondSessionStarted())return false;
     if(a.id==='recruit'&&isInPlayerFaction(rep.id))return false;
     if(a.id==='join-caucus'&&isInPlayerFaction(rep.id))return false;
+    if(a.id==='join-caucus'&&G.player.factionId&&G.factions.find(f=>f.leaderId===rep.id)?.id===G.player.factionId)return false;
     if(a.id==='donate'&&G.donatedTo.includes(rep.id))return false;
     if(a.undermine&&isInPlayerFaction(rep.id))return false;
     return true;
@@ -1655,6 +1662,23 @@ function showFoundFaction(){
     closeModal();render();
   };
   document.getElementById('overlay').classList.add('active');
+}
+
+function showJoinOutcome({success,rep,faction,chancePct,xferred}){
+  const title=success?'Welcomed into the Caucus':'Request Declined';
+  const sub=success?`You are now a member of ${faction.name}`:`${faction.name} remains independent of you`;
+  showModal(title,sub,()=>`
+    <div class="msec">
+      <div class="mev" style="font-size:13px;line-height:1.7">
+        ${success
+          ?`<strong>Rep. ${rep.last}</strong> welcomed you into the <strong>${faction.name}</strong>.`
+          :`<strong>Rep. ${rep.last}</strong> was polite but declined your request to join the <strong>${faction.name}</strong>.`}
+      </div>
+      <div class="mev" style="opacity:.75">Approach chance was about <strong>${chancePct}%</strong> based on your affinity and current standing with Rep. ${rep.last}.</div>
+      ${success&&xferred&&xferred.length?`<div class="mev">Your ${xferred.length} former faction member${xferred.length>1?'s':''} (${xferred.join(', ')}) transferred over with you.</div>`:''}
+      ${success?`<div class="mev" style="margin-top:10px"><em>You may still form a new faction or run for Speaker later.</em></div>`:`<div class="mev" style="margin-top:10px;opacity:.75">Build the relationship further — a higher disposition with Rep. ${rep.last} will improve your odds.</div>`}
+    </div>
+  `);
 }
 
 function renameFaction(fid){
@@ -3002,14 +3026,19 @@ function renderChamber(){
     const sortMems=(arr)=>[...arr].sort((a,b)=>rank(a.isPlayer?G.player.pos:a.pos)-rank(b.isPlayer?G.player.pos:b.pos));
     // Build faction groups
     const groups=[];
-    // Player faction (includes player themselves)
-    const pfColor=G.playerFaction?G.playerFaction.color:'var(--player)';
-    const pfName=G.playerFaction?G.playerFaction.name:'You (Independent)';
-    const pfMems=sortMems([{...G.player,isPlayer:true},...(G.playerFaction?G.reps.filter(r=>isInPlayerFaction(r.id)):[] )]);
-    groups.push({name:pfName,color:pfColor,mems:pfMems,kind:'player',faction:G.playerFaction});
-    // NPC factions by size desc
+    // Where is the player? Own faction > joined NPC faction > independent
+    const joinedNpcFaction=!G.playerFaction&&G.player.factionId?G.factions.find(f=>f.id===G.player.factionId):null;
+    if(G.playerFaction){
+      const pfMems=sortMems([{...G.player,isPlayer:true},...G.reps.filter(r=>isInPlayerFaction(r.id))]);
+      groups.push({name:G.playerFaction.name,color:G.playerFaction.color,mems:pfMems,kind:'player',faction:G.playerFaction});
+    } else if(!joinedNpcFaction){
+      groups.push({name:'You (Independent)',color:'var(--player)',mems:[{...G.player,isPlayer:true}],kind:'player',faction:null});
+    }
+    // NPC factions by size desc — include player if they've joined one
     [...G.factions].sort((a,b)=>b.members.length-a.members.length).forEach(f=>{
-      const mems=sortMems(G.reps.filter(r=>r.factionId===f.id&&!isInPlayerFaction(r.id)));
+      const memReps=G.reps.filter(r=>r.factionId===f.id&&!isInPlayerFaction(r.id));
+      const includePlayer=joinedNpcFaction&&joinedNpcFaction.id===f.id;
+      const mems=sortMems(includePlayer?[{...G.player,isPlayer:true},...memReps]:memReps);
       if(mems.length)groups.push({name:f.name,color:f.color,mems,kind:'npc',faction:f});
     });
     // Unaffiliated
@@ -3390,25 +3419,28 @@ function renderIdeologyBar(){
 function renderFactions(){
   const list=document.getElementById('fac-list');list.innerHTML='';
   const all=[...(G.playerFaction?[G.playerFaction]:[]),...G.factions];
+  const joinedNpc=!G.playerFaction&&G.player.factionId?G.player.factionId:null;
   all.forEach(f=>{
     const isp=f.id==='player';
+    const playerIsMember=isp||(joinedNpc===f.id);
     const leader=isp?G.player:G.reps.find(r=>r.id===f.leaderId);
     const expanded=!!G.expandedFactions[f.id];
     const wrap=document.createElement('div');wrap.className='frow-wrap';
-    const row=document.createElement('div');row.className='frow'+(isp?' pf':'');
-    row.style.cssText='display:flex;align-items:center;gap:7px;padding:4px 8px;background:'+( isp?'rgba(44,95,138,.08)':'var(--surface)')+';border-left:3px solid '+(isp?'var(--player)':'transparent')+';cursor:pointer;';
+    const row=document.createElement('div');row.className='frow'+(playerIsMember?' pf':'');
+    row.style.cssText='display:flex;align-items:center;gap:7px;padding:4px 8px;background:'+(playerIsMember?'rgba(44,95,138,.08)':'var(--surface)')+';border-left:3px solid '+(playerIsMember?'var(--player)':'transparent')+';cursor:pointer;';
     const fIsCandidate=!isp&&G.speakerRace?.active&&G.speakerRace.candidates.some(c=>c.factionId===f.id);
     const pIsCandidate=isp&&G.speakerRace?.declared;
     const leaderIsSpk=leader&&(isp?G.player.pos:leader.pos)==='speaker';
-    row.innerHTML=`<div class="fswatch" style="background:${f.color}"></div><span class="fname" style="flex:0 1 auto;">${f.name}${fIsCandidate||pIsCandidate?` <span style="color:#e8b84b">★</span>`:''}</span><span class="fedit" title="Rename faction" data-fid="${f.id}" style="opacity:.4;font-size:10px;cursor:pointer;padding:0 2px;flex:0 0 auto;">✎</span><span class="fleader" style="color:${isp?'var(--player)':f.color};flex:1;">${leader?`★ ${leader.last}${leaderIsSpk?' <span style="color:#ffd700">★</span>':''}`:''}</span><span class="fcount">${f.members.length}m</span><span style="margin-left:auto;font-size:10px;opacity:.5">${expanded?'▾':'▸'}</span>`;
+    const memCount=f.members.length+(joinedNpc===f.id?1:0);
+    row.innerHTML=`<div class="fswatch" style="background:${f.color}"></div><span class="fname" style="flex:0 1 auto;">${f.name}${fIsCandidate||pIsCandidate?` <span style="color:#e8b84b">★</span>`:''}${joinedNpc===f.id?' <span style="color:var(--player);font-size:9px">★ you</span>':''}</span><span class="fedit" title="Rename faction" data-fid="${f.id}" style="opacity:.4;font-size:10px;cursor:pointer;padding:0 2px;flex:0 0 auto;">✎</span><span class="fleader" style="color:${isp?'var(--player)':f.color};flex:1;">${leader?`★ ${leader.last}${leaderIsSpk?' <span style="color:#ffd700">★</span>':''}`:''}</span><span class="fcount">${memCount}m</span><span style="margin-left:auto;font-size:10px;opacity:.5">${expanded?'▾':'▸'}</span>`;
     row.onclick=()=>{G.expandedFactions[f.id]=!G.expandedFactions[f.id];renderFactions();};
     row.querySelector('.fedit').onclick=(e)=>{e.stopPropagation();renameFaction(f.id);};
     wrap.appendChild(row);
     if(expanded){
       const clust=document.createElement('div');clust.className='fcluster';
-      // Build bubble list: player first if this is the player faction, then member reps
+      // Build bubble list: player first if this is the player faction (or joined NPC), then member reps
       const bubbles=[];
-      if(isp) bubbles.push({first:G.player.first,last:G.player.last,isPlayer:true,id:-1,disposition:100,pos:G.player.pos});
+      if(playerIsMember) bubbles.push({first:G.player.first,last:G.player.last,isPlayer:true,id:-1,disposition:100,pos:G.player.pos});
       f.members.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r)bubbles.push(r);});
       // Sort: leader / player first, then alphabetically by last name
       bubbles.sort((a,b)=>{
@@ -3533,7 +3565,8 @@ function renderHeader(){
   document.getElementById('h-war').textContent=fmtMoney(G.player.warchest);
   document.getElementById('h-dist').textContent=`${Math.round(G.districtApproval)}%`;
   const pfSize=G.playerFaction?.members.length||0;
-  document.getElementById('h-fac').textContent=G.playerFaction?`${G.playerFaction.name} (${pfSize})`:G.milestone1?'Not founded':'—';
+  const joinedNpc=!G.playerFaction&&G.player.factionId?G.factions.find(f=>f.id===G.player.factionId):null;
+  document.getElementById('h-fac').textContent=G.playerFaction?`${G.playerFaction.name} (${pfSize})`:joinedNpc?`${joinedNpc.name} (member)`:(G.milestone1?'Not founded':'—');
   const pips=document.getElementById('h-pips');pips.innerHTML='';
   for(let i=0;i<Math.min(maxCap,14);i++){const p=document.createElement('div');p.className='pip'+(i<G.player.capital?' on':'');pips.appendChild(p);}
 }
@@ -3542,6 +3575,7 @@ function renderSidebar(){
   const sc=document.getElementById('sbc');const ap=document.getElementById('act-panel');
   if(!G.selected){
     const pl=posLabel(G.player.pos);const pfName=G.playerFaction?.name;const phase=getPhase(G.month);
+    const joinedNpc=!G.playerFaction&&G.player.factionId?G.factions.find(f=>f.id===G.player.factionId):null;
     const isRace=G.speakerRace?.active;const isInterim=phase==='Interim';
     const canFR=isInterim&&!G.fundraisedThisTurn;
     const canSeekLeader=G.month===12&&(G.playerFaction?.members.length||0)>=8&&!LEADERSHIP.some(l=>l.id===G.player.pos);
@@ -3551,7 +3585,7 @@ function renderSidebar(){
         <h2>Rep. ${G.player.first} ${G.player.last}${G.player.pos==='speaker'?' <span style="color:#ffd700;font-size:16px">★</span>':''} <span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:${G.player.party==='D'?'#2c5fa0':'#a03020'};color:white;vertical-align:middle">${G.player.party==='D'?'Democrat':'Republican'}</span></h2>
         <div class="psub">${distName(G.player.district)} · ${G.player.seniority===0?'Freshman':G.player.seniority+(G.player.seniority===1?' term':' terms')}</div>
         ${pl?`<div class="ptag">${pl}</div>`:''}
-        ${pfName?`<span class="ftag" style="background:${G.playerFaction.color}">${pfName}</span>`:''}
+        ${pfName?`<span class="ftag" style="background:${G.playerFaction.color}">${pfName}</span>`:joinedNpc?`<span class="ftag" style="background:${joinedNpc.color}">${joinedNpc.name} <span style="opacity:.85">· member</span></span>`:''}
         <div class="sgrid" style="margin-top:10px">
           <div class="sbox"><div class="sl">Capital</div><div class="sv">${G.player.capital} / ${calcCapital(G.player)}</div></div>
           <div class="sbox"><div class="sl">Warchest</div><div class="sv">${fmtMoney(G.player.warchest)}</div></div>
