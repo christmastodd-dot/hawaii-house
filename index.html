@@ -103,6 +103,9 @@ body{
 .fc-block{display:flex;flex-direction:column;gap:3px;}
 .fc-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:2px 4px;border-radius:3px 3px 0 0;display:flex;align-items:center;gap:5px;}
 .fc-label-bar{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+.fc-meta{font-size:9.5px;color:var(--muted);padding:0 4px 3px 17px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;letter-spacing:.02em;}
+.fc-meta b{color:var(--text,#ddd);font-weight:700;}
+.fc-meta .pill{padding:1px 5px;border-radius:3px;font-weight:700;font-size:9px;letter-spacing:.04em;color:#fff;}
 .fc-seats{display:flex;flex-wrap:wrap;gap:3px;}
 .crow{display:flex;gap:4px;justify-content:center;}
 .seat{
@@ -864,6 +867,23 @@ function affinity(player,rep){
   if(player.ethnicity===rep.ethnicity)s+=20;
   if(player.gender===rep.gender)s+=15;
   return s/100;
+}
+function factionJoinChance(f){
+  if(!f||!f.leaderId&&f.id!=='player')return null;
+  if(f.id==='player')return null;
+  if(f.party&&f.party!==G.player.party)return null;
+  const leader=G.reps.find(r=>r.id===f.leaderId);
+  if(!leader)return null;
+  return Math.min(.85,.40+affinity(G.player,leader)*.5+(leader.disposition-40)/150);
+}
+function factionPopularity(memberReps){
+  if(!memberReps.length)return null;
+  const real=memberReps.filter(r=>!r.isPlayer);
+  if(!real.length)return null;
+  const avg=real.reduce((s,r)=>s+r.disposition,0)/real.length;
+  const allies=real.filter(r=>r.disposition>=80).length;
+  const friendly=real.filter(r=>r.disposition>=60&&r.disposition<80).length;
+  return{avg,allies,friendly,n:real.length};
 }
 function affinityDesc(a){
   if(a>.7)return'Very high — strong natural alignment.';
@@ -2784,7 +2804,7 @@ function makeSeat(m,viewMode){
   const s=document.createElement('div');
   s.className='seat'+(m.isPlayer?' me':'')+(G.selected===m.id?' sel':'');
   if(viewMode==='faction'){
-    s.style.background=m.isPlayer?(G.playerFaction?G.playerFaction.color:'var(--player)'):getFactionColor(m);
+    s.setAttribute('data-d',m.isPlayer?'player':dispId(m.disposition));s.style.background='';
   } else if(viewMode==='pledges'){
     s.style.background=m.isPlayer?(G.playerFaction?.color||'var(--player)'):(m.pledge?getPledgeColor(m):'#6a6a7e');
   } else {
@@ -2818,23 +2838,55 @@ function renderChamber(){
     const pfColor=G.playerFaction?G.playerFaction.color:'var(--player)';
     const pfName=G.playerFaction?G.playerFaction.name:'You (Independent)';
     const pfMems=sortMems([{...G.player,isPlayer:true},...(G.playerFaction?G.reps.filter(r=>isInPlayerFaction(r.id)):[] )]);
-    groups.push({name:pfName,color:pfColor,mems:pfMems});
+    groups.push({name:pfName,color:pfColor,mems:pfMems,kind:'player',faction:G.playerFaction});
     // NPC factions by size desc
     [...G.factions].sort((a,b)=>b.members.length-a.members.length).forEach(f=>{
       const mems=sortMems(G.reps.filter(r=>r.factionId===f.id&&!isInPlayerFaction(r.id)));
-      if(mems.length)groups.push({name:f.name,color:f.color,mems});
+      if(mems.length)groups.push({name:f.name,color:f.color,mems,kind:'npc',faction:f});
     });
     // Unaffiliated
     const unaff=sortMems(G.reps.filter(r=>!r.factionId&&!isInPlayerFaction(r.id)));
-    if(unaff.length)groups.push({name:'Unaffiliated',color:'#9a9aaa',mems:unaff});
+    if(unaff.length)groups.push({name:'Unaffiliated',color:'#9a9aaa',mems:unaff,kind:'unaff'});
     // Render
     groups.forEach(g=>{
       const block=document.createElement('div');block.className='fc-block';
       const lbl=document.createElement('div');lbl.className='fc-label';
       lbl.innerHTML=`<div class="fc-label-bar" style="background:${g.color}"></div><span style="color:${g.color}">${g.name}</span><span style="opacity:.4;font-weight:400;margin-left:2px">(${g.mems.length})</span>`;
+      block.appendChild(lbl);
+      // Per-faction metrics
+      const pop=factionPopularity(g.mems);
+      if(pop){
+        const meta=document.createElement('div');meta.className='fc-meta';
+        const dc=dispColor(pop.avg);const dl=dispLabel(pop.avg);
+        let html=`<span>Avg disp: <span class="pill" style="background:${dc}">${Math.round(pop.avg)} · ${dl}</span></span>`;
+        if(pop.allies||pop.friendly){
+          const parts=[];
+          if(pop.allies)parts.push(`${pop.allies} ally${pop.allies>1?'s':''}`);
+          if(pop.friendly)parts.push(`${pop.friendly} friendly`);
+          html+=`<span style="opacity:.85">${parts.join(' · ')}</span>`;
+        }
+        if(g.kind==='npc'){
+          const jc=factionJoinChance(g.faction);
+          if(jc===null){
+            if(g.faction.party&&g.faction.party!==G.player.party){
+              html+=`<span title="Factions are party-bound" style="opacity:.55">Join: cross-party (locked)</span>`;
+            }
+          } else {
+            const pct=Math.round(jc*100);
+            const jColor=pct>=60?'var(--ally)':pct>=40?'var(--friendly)':pct>=25?'var(--neutral)':'var(--cool)';
+            html+=`<span>Join chance: <span class="pill" style="background:${jColor}">${pct}%</span></span>`;
+          }
+        } else if(g.kind==='player'){
+          html+=`<span style="opacity:.7">Your caucus</span>`;
+        } else if(g.kind==='unaff'){
+          html+=`<span style="opacity:.55">Potential recruits</span>`;
+        }
+        meta.innerHTML=html;
+        block.appendChild(meta);
+      }
       const seats=document.createElement('div');seats.className='fc-seats';
       g.mems.forEach(m=>seats.appendChild(makeSeat(m,'faction')));
-      block.appendChild(lbl);block.appendChild(seats);el.appendChild(block);
+      block.appendChild(seats);el.appendChild(block);
     });
   } else if(G.viewMode==='ideology'){
     el.className='ideo-mode';
@@ -3269,8 +3321,7 @@ function renderLegend(){
     G.speakerRace.candidates.forEach(c=>{const color=c.pledgeColor||(G.factions.find(f=>f.id===c.factionId)?.color||'#886');el.innerHTML+=`<div class="leg"><div class="lsq" style="background:${color}"></div>★ ${c.leaderName}</div>`;});
     el.innerHTML+=`<div class="leg"><div class="lsq" style="background:#6a6a7e"></div>Undecided</div>`;
   } else if(G.viewMode==='faction'){
-    [...(G.playerFaction?[G.playerFaction]:[]),...G.factions].forEach(f=>el.innerHTML+=`<div class="leg"><div class="lsq" style="background:${f.color}"></div>${f.name.split(' ')[0]}</div>`);
-    el.innerHTML+=`<div class="leg"><div class="lsq" style="background:#9a9aaa"></div>Unaffiliated</div>`;
+    [['var(--player)','You'],['var(--ally)','Ally'],['var(--friendly)','Friendly'],['var(--neutral)','Neutral'],['var(--cool)','Cool'],['var(--hostile)','Hostile']].forEach(([c,l])=>el.innerHTML+=`<div class="leg"><div class="lsq" style="background:${c}"></div>${l}</div>`);
   } else if(G.viewMode==='ideology'){
     [['#3d6b9e','Progressive'],['#5a82b8','Left'],['#7a90b0','Center-Left'],['#8a8a9e','Moderate'],['#b8884a','Center-Right'],['#9e4a3d','Right/Conservative']].forEach(([c,l])=>el.innerHTML+=`<div class="leg"><div class="lsq" style="background:${c}"></div>${l}</div>`);
   } else {
