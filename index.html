@@ -124,6 +124,11 @@ body{
 .seat::after{content:'';position:absolute;inset:0;border-radius:4px;background:linear-gradient(135deg,rgba(255,255,255,.14) 0%,transparent 55%);pointer-events:none;}
 .seat:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.55);z-index:10;}
 .seat .gos-badge{position:absolute;top:-4px;right:-4px;width:13px;height:13px;border-radius:50%;background:#e8b84b;color:#1a1a1f;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--bg);z-index:3;pointer-events:none;line-height:1;letter-spacing:0;font-family:'Inconsolata',monospace;box-shadow:0 0 0 1px rgba(0,0,0,.4);}
+.seat .pty{position:absolute;bottom:1px;left:1px;font-size:9px;font-weight:900;line-height:1;padding:1px 3px;border-radius:2px;color:#fff;letter-spacing:.04em;pointer-events:none;z-index:2;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
+.seat .pty.d{background:#4a85d4;}
+.seat .pty.r{background:#c84a3d;}
+.seat .vac-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2;line-height:1;opacity:.3;}
+.seat .vac-overlay::before{content:'';width:74%;height:74%;border-radius:50%;border:3px solid #e02020;box-sizing:border-box;background:linear-gradient(135deg,transparent calc(50% - 1.5px),#e02020 calc(50% - 1.5px),#e02020 calc(50% + 1.5px),transparent calc(50% + 1.5px));}
 .seat.sel{outline:2px solid var(--accent);outline-offset:2px;z-index:5;}
 .seat.me{outline:2px solid var(--accent);outline-offset:2px;cursor:default;box-shadow:0 0 14px var(--accent-glow);}
 .seat[data-d=player]{background:var(--player);}
@@ -2147,10 +2152,13 @@ function politicalEventFire(){
 
 // ===== ELECTION =====
 function runElection(){
-  const count=rng(5,18);
-  const summary=[`General election: ${count} seats changed hands.`];
-  const vulnerable=G.reps.filter(r=>r.pos!=='speaker'&&r.seniority<7).sort(()=>Math.random()-.5);
-  const losers=vulnerable.slice(0,count);
+  // Vacancies (announced retirements / higher-office runs / not-running) are guaranteed turnover
+  const vacating=G.reps.filter(r=>r.vacating);
+  const turnover=rng(5,18);
+  const remaining=Math.max(0,turnover-vacating.length);
+  const vulnerable=G.reps.filter(r=>!r.vacating&&r.pos!=='speaker'&&r.seniority<7).sort(()=>Math.random()-.5);
+  const losers=[...vacating,...vulnerable.slice(0,remaining)];
+  const summary=[`General election: ${losers.length} seat${losers.length===1?'':'s'} changed hands${vacating.length?` (${vacating.length} from announced vacanc${vacating.length===1?'y':'ies'})`:''}.`];
   let playerLosses=0;
   for(const loser of losers){
     const oid=loser.id;
@@ -2158,14 +2166,55 @@ function runElection(){
     if(G.playerFaction&&G.playerFaction.members.includes(oid)){G.playerFaction.members=G.playerFaction.members.filter(id=>id!==oid);playerLosses++;}
     const fresh=genRep(oid,loser.district);fresh.seniority=0;fresh.pos=null;fresh.factionId=null;fresh.pledge=null;
     Object.assign(loser,fresh);loser.id=oid;
+    delete loser.vacating;
   }
   G.reps.filter(r=>!losers.includes(r)).forEach(r=>r.seniority++);
   G.player.seniority++;
   G.reps.filter(r=>r.seniority===0&&r.pos).forEach(r=>r.pos=null);
+  // Clear any unresolved vacancies (shouldn't be any, but defensive)
+  G.reps.forEach(r=>{if(r.vacating)delete r.vacating;});
   if(playerLosses>0)summary.push(`${playerLosses} faction member${playerLosses>1?'s':''} lost their seat${playerLosses>1?'s':''}.`);
   G.factions.forEach(f=>f.members=f.members.filter(id=>G.reps.find(r=>r.id===id)));
   if(G.playerFaction)G.playerFaction.members=G.playerFaction.members.filter(id=>G.reps.find(r=>r.id===id));
   return summary;
+}
+
+// Pick 4-12 House members each election cycle to vacate their seats (retire, run for higher
+// office, or simply not seek re-election). Announcements are spread across Jan-June and
+// fired by endTurn() as the months tick by.
+function generateVacancies(){
+  G.reps.forEach(r=>{if(r.vacating)delete r.vacating;});
+  const pool=G.reps.filter(r=>r.pos!=='speaker'); // speaker rarely retires mid-term
+  if(pool.length<4)return;
+  const count=Math.min(pool.length,rng(4,12));
+  const picks=[...pool].sort(()=>Math.random()-.5).slice(0,count);
+  picks.forEach(r=>{
+    let reason;
+    if(r.seniority>=7) reason=Math.random()<.7?'retire':'higher-office';
+    else if(r.seniority>=3) reason=Math.random()<.55?'higher-office':'not-running';
+    else reason=Math.random()<.6?'not-running':'higher-office';
+    r.vacating={reason,declMonth:rng(1,6),fired:false};
+  });
+}
+function fireVacancyAnnouncements(){
+  const fired=G.reps.filter(r=>r.vacating&&!r.vacating.fired&&r.vacating.declMonth===G.month);
+  fired.forEach(r=>{
+    r.vacating.fired=true;
+    const reason=r.vacating.reason;
+    let msg;
+    if(reason==='retire'){
+      msg=`🏛 Rep. ${r.last} (${distName(r.district)}, ${r.seniority} term${r.seniority===1?'':'s'}) announced they will retire at the end of this term.`;
+    } else if(reason==='higher-office'){
+      const office=pick(['Lieutenant Governor','U.S. Congress','State Senate','Mayor of Honolulu','U.S. Senate']);
+      msg=`📣 Rep. ${r.last} (${distName(r.district)}) announced a campaign for ${office} — they will not seek re-election to the House.`;
+    } else {
+      const why=pick(['family considerations','health reasons','a return to the private sector','time to pass the torch','an opportunity outside government']);
+      msg=`Rep. ${r.last} (${distName(r.district)}) announced they will not seek another term, citing ${why}.`;
+    }
+    addEvent(msg);
+    r.log.push({m:G.month,y:G.year,text:'Announced they would not seek re-election ('+reason+').'});
+  });
+  return fired.length;
 }
 
 // ===== EVENTS =====
@@ -2475,8 +2524,13 @@ function endTurn(){
   // Set up declarations in January of election years
   if(G.month===1&&G.year>=2028&&G.year%2===0){
     generateElectionDeclarations();
+    generateVacancies();
     G.endorsements={};
-    addEvent(`${G.year} is an election year. Challengers may file against your district seat through June.`);
+    addEvent(`${G.year} is an election year. Challengers may file against your district seat through June. Incumbent retirements and higher-office bids will also be announced over the coming months.`);
+  }
+  // Fire scheduled NPC retirement / higher-office announcements (Jan–Jun of election years)
+  if(G.year>=2028&&G.year%2===0&&G.month>=1&&G.month<=6){
+    fireVacancyAnnouncements();
   }
   // Fire any scheduled NPC declarations (Jan–Jun of election years)
   let firedDecs=[];
@@ -3070,6 +3124,15 @@ function makeSeat(m,viewMode){
   if(!m.isPlayer&&hasRecentGossip(m.id)){
     const b=document.createElement('span');b.className='gos-badge';b.textContent='!';b.title='In the rumor mill recently — see Gossip log';
     s.appendChild(b);
+  }
+  const partyLetter=m.isPlayer?G.player.party:m.party;
+  if(partyLetter){
+    const p=document.createElement('span');p.className='pty '+(partyLetter==='D'?'d':'r');p.textContent=partyLetter;
+    s.appendChild(p);
+  }
+  if(!m.isPlayer&&m.vacating&&m.vacating.fired){
+    const v=document.createElement('span');v.className='vac-overlay';v.title='Not seeking re-election';
+    s.appendChild(v);
   }
   s.onmouseenter=e=>showTip(e,m);s.onmouseleave=hideTip;
   if(m.isPlayer){s.onclick=()=>{G.selected=null;renderSidebar();};}
