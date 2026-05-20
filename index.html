@@ -1221,7 +1221,7 @@ const ACTIONS=[
    }},
   {id:'donate',label:'Political Donation',cost:2,needsIntro:true,hideAfterIntro:false,phase:'any',desc:'Contribute $2,000 to their campaign. Once per election cycle.',
    do(rep){if(G.donatedTo.includes(rep.id)){addEvent(`You already donated to Rep. ${rep.last} this election cycle.`);return false;}if(G.player.warchest<2000){addEvent('Your warchest is too thin for a donation right now.');return false;}G.player.warchest-=2000;rep.warchest+=2000;G.donatedTo.push(rep.id);const b=Math.round(affinity(G.player,rep)*6)+5;rep.disposition=Math.min(100,rep.disposition+b);rep.log.push({m:G.month,y:G.year,text:'Received a $2,000 campaign donation from you.'});addEvent(`You donated $2,000 to Rep. ${rep.last}'s campaign. Real appreciation expressed.`);}},
-  {id:'cosponsor',label:'Co-sponsor a Bill',cost:2,needsIntro:true,hideAfterIntro:false,phase:'session',desc:'Sign onto their legislation. Signals shared priorities.',
+  {id:'cosponsor',label:'Co-sponsor a Bill',cost:2,needsIntro:true,hideAfterIntro:false,phase:'dec-jan',desc:'Sign onto their legislation. Signals shared priorities. Available in December and January when bills are being drafted.',
    do(rep){const b=Math.round(affinity(G.player,rep)*5)+6;rep.disposition=Math.min(100,rep.disposition+b);const sp=G.reps.filter(r=>r.introduced&&r.id!==rep.id&&Math.abs(r.ideology-rep.ideology)<=10).slice(0,3);sp.forEach(r=>r.disposition=Math.min(100,r.disposition+3));const bill=pick(['affordable housing bill','clean energy bill','education funding measure','tourism reform act','water conservation bill','workforce development bill']);rep.log.push({m:G.month,y:G.year,text:`You co-sponsored their ${bill}.`});addEvent(`You co-sponsored Rep. ${rep.last}'s ${bill}.${sp.length?` Also warmed relations with ${sp.length} colleague${sp.length>1?'s':''}.`:''}`);}},
   {id:'committee-maneuver',label:'Committee Maneuver',cost:3,needsIntro:true,hideAfterIntro:false,phase:'session',requiresPlayerPos:true,desc:'Use your committee position to advance their priorities. Impact scales with your power tier.',
    do(rep){
@@ -1451,6 +1451,7 @@ function availableActions(rep){
     if(a.hideAfterIntro&&rep.introduced)return false;
     if(a.phase==='session'&&phase!=='Session')return false;
     if(a.phase==='dec'&&G.month!==12)return false;
+    if(a.phase==='dec-jan'&&!(G.month===12||G.month===1))return false;
     if(a.phase==='race'&&!raceActive)return false;
     if(a.phase==='raceActive'&&!G.speakerRace?.active)return false;
     if(a.phase==='nov-even'&&!(G.month===11&&G.year>=2028&&G.year%2===0))return false;
@@ -1537,12 +1538,16 @@ function doFundraise(){
   if(G.fundraisedThisTurn){addEvent('You\'ve already held a fundraiser this month.');return;}
   G.fundraisedThisTurn=true;
   const mult=ideoPenalty(G.player.ideology);
-  const gain=Math.round(rng(15,40)*1000*mult);G.player.warchest+=gain;
+  // Junior incumbents have a thinner donor network — first couple of terms raise less
+  const s=G.player.seniority;
+  const range=s===0?[4,12]:s===1?[6,16]:s===2?[10,26]:[15,40];
+  const gain=Math.round(rng(range[0],range[1])*1000*mult);G.player.warchest+=gain;
   let extra=0;
   G.reps.filter(r=>isInPlayerFaction(r.id)&&dispId(r.disposition)==='ally').forEach(r=>{if(Math.random()<.4){const amt=rng(2,8)*1000;extra+=amt;}});
   G.player.warchest+=extra;
   const ideNote=mult<0.6?' (limited donor pool for your ideology)':mult<0.9?' (moderate donor base)':'';
-  addEvent(`Fundraiser held. Raised ${fmtMoney(gain)}${ideNote}.${extra?` Plus ${fmtMoney(extra)} from allied members.`:''}`);
+  const seniorityNote=s<=1?' Your donor network is still building.':'';
+  addEvent(`Fundraiser held. Raised ${fmtMoney(gain)}${ideNote}.${seniorityNote}${extra?` Plus ${fmtMoney(extra)} from allied members.`:''}`);
   checkMilestones();render();
 }
 
@@ -3345,6 +3350,44 @@ function renderChamber(){
       });
       block.appendChild(lbl);block.appendChild(seats);el.appendChild(block);
     });
+  } else if(G.viewMode==='seniority'){
+    el.style.flex='1 1 0';el.style.minHeight='0';el.style.overflowY='auto';
+    el.className='faction-mode';
+    const all=[{...G.player,isPlayer:true},...G.reps];
+    // Group by seniority (terms in office)
+    const groups=new Map();
+    all.forEach(m=>{
+      const s=m.isPlayer?G.player.seniority:m.seniority;
+      if(!groups.has(s))groups.set(s,[]);
+      groups.get(s).push(m);
+    });
+    const SCOLORS=['#5a8fd4','#7a90b0','#9a8a5a','#b07830','#b85a30','#a04030','#8a3a30','#6a3030','#5a2a30','#4a2030'];
+    const cohortLabel=(s)=>{
+      if(s===0)return'Freshman Class';
+      if(s===1)return'Sophomore Class';
+      if(s<=3)return'Mid-Career';
+      if(s<=6)return'Veteran';
+      return'Dean';
+    };
+    const sorted=[...groups.entries()].sort((a,b)=>a[0]-b[0]);
+    sorted.forEach(([sen,mems])=>{
+      const block=document.createElement('div');block.className='fc-block';
+      const cy=2026+(G.player.seniority-sen)*2;
+      const lbl=document.createElement('div');lbl.className='fc-label';
+      const color=SCOLORS[Math.min(sen,SCOLORS.length-1)];
+      lbl.innerHTML=`<div class="fc-label-bar" style="background:${color}"></div><span style="color:${color}">Class of ${cy} — ${cohortLabel(sen)}</span><span style="opacity:.4;font-weight:400;margin-left:6px">(${mems.length})</span><span style="opacity:.5;font-weight:500;margin-left:8px;font-size:9px">${sen} term${sen===1?'':'s'}</span>`;
+      block.appendChild(lbl);
+      const seats=document.createElement('div');seats.className='fc-seats';
+      const rwrap=document.createElement('div');rwrap.className='fc-rest';
+      mems.sort((a,b)=>{
+        const ap=(a.isPlayer?G.player.pos:a.pos)?0:1;
+        const bp=(b.isPlayer?G.player.pos:b.pos)?0:1;
+        if(ap!==bp)return ap-bp;
+        return(a.last||'').localeCompare(b.last||'');
+      }).forEach(m=>rwrap.appendChild(makeSeat(m,'seniority')));
+      seats.appendChild(rwrap);
+      block.appendChild(seats);el.appendChild(block);
+    });
   } else if(G.viewMode==='org'){
     el.className='org-mode';
     el.style.width='';el.style.height='';el.style.position='';
@@ -3631,7 +3674,7 @@ function renderPledgePanel(){
 }
 
 function renderIdeologyBar(){
-  document.getElementById('ideo-sec').style.display=(G.viewMode==='org'||G.viewMode==='faction')?'none':'block';
+  document.getElementById('ideo-sec').style.display=(G.viewMode==='org'||G.viewMode==='faction'||G.viewMode==='seniority')?'none':'block';
   const bar=document.getElementById('ideo-bar');bar.innerHTML='';
   const all=[{...G.player,isPlayer:true,id:0},...G.reps];
   all.forEach(m=>{
@@ -3758,6 +3801,8 @@ function renderLegend(){
     [['var(--player)','You'],['var(--ally)','Ally'],['var(--friendly)','Friendly'],['var(--neutral)','Neutral'],['var(--cool)','Cool'],['var(--hostile)','Hostile']].forEach(([c,l])=>el.innerHTML+=`<div class="leg"><div class="lsq" style="background:${c}"></div>${l}</div>`);
   } else if(G.viewMode==='ideology'){
     [['#3d6b9e','Progressive'],['#5a82b8','Left'],['#7a90b0','Center-Left'],['#8a8a9e','Moderate'],['#b8884a','Center-Right'],['#9e4a3d','Right/Conservative']].forEach(([c,l])=>el.innerHTML+=`<div class="leg"><div class="lsq" style="background:${c}"></div>${l}</div>`);
+  } else if(G.viewMode==='seniority'){
+    [['var(--player)','You'],['var(--ally)','Ally'],['var(--friendly)','Friendly'],['var(--neutral)','Neutral'],['var(--cool)','Cool'],['var(--hostile)','Hostile']].forEach(([c,l])=>el.innerHTML+=`<div class="leg"><div class="lsq" style="background:${c}"></div>${l}</div>`);
   } else {
     [['var(--player)','You'],['var(--ally)','Ally'],['var(--friendly)','Friendly'],['var(--neutral)','Neutral'],['var(--cool)','Cool'],['var(--hostile)','Hostile']].forEach(([c,l])=>el.innerHTML+=`<div class="leg"><div class="lsq" style="background:${c}"></div>${l}</div>`);
   }
@@ -3765,7 +3810,7 @@ function renderLegend(){
 
 function renderViewToggle(){
   const t=document.getElementById('vtoggle');t.innerHTML='';
-  const modes=[['disposition','Disposition'],['faction','Faction'],['ideology','Ideology'],['org','Organization']];
+  const modes=[['disposition','Disposition'],['faction','Faction'],['ideology','Ideology'],['seniority','Seniority'],['org','Organization']];
   if(G.speakerRace?.active)modes.push(['pledges','Pledges']);
   modes.forEach(([mode,label])=>{
     const b=document.createElement('button');b.className='vbtn'+(G.viewMode===mode?' on':'');
@@ -3904,7 +3949,7 @@ function renderSidebar(){
       btn.onclick=()=>act.id==='secure-pledge'?showPledgeDealModal(rep.id):doAction(act.id,rep.id);al.appendChild(btn);
     });
   }
-  if(phase==='Interim'&&!G.speakerRace?.active){const n=document.createElement('div');n.className='pnote';n.textContent='Co-sponsoring legislation available Jan–May only.';al.appendChild(n);}
+  if(!(G.month===12||G.month===1)&&!G.speakerRace?.active){const n=document.createElement('div');n.className='pnote';n.textContent='Co-sponsoring legislation available in December and January only.';al.appendChild(n);}
 }
 
 let feedOpen=false;
