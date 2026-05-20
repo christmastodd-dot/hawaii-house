@@ -3638,7 +3638,7 @@ function renderSidebar(){
     const canEndorse=G.month===11&&G.year>=2028&&G.year%2===0;
     sc.innerHTML=`
       <div class="pc">
-        <h2>Rep. ${G.player.first} ${G.player.last}${G.player.pos==='speaker'?' <span style="color:#ffd700;font-size:16px">★</span>':''} <span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:${G.player.party==='D'?'#2c5fa0':'#a03020'};color:white;vertical-align:middle">${G.player.party==='D'?'Democrat':'Republican'}</span></h2>
+        <h2>Rep. ${G.player.first} ${G.player.last}${G.player.pos==='speaker'?' <span style="color:#ffd700;font-size:16px">★</span>':''} <span style="font-size:12.5px;font-weight:700;padding:2px 8px;border-radius:3px;background:${G.player.party==='D'?'#4a85d4':'#c84a3d'};color:white;vertical-align:middle;letter-spacing:.02em">${G.player.party==='D'?'Democrat':'Republican'}</span></h2>
         <div class="psub">${distName(G.player.district)} · ${G.player.seniority===0?'Freshman':G.player.seniority+(G.player.seniority===1?' term':' terms')}</div>
         ${pl?`<div class="ptag">${pl}</div>`:''}
         ${pfName?`<span class="ftag" style="background:${G.playerFaction.color}">${pfName}</span>`:joinedNpc?`<span class="ftag" style="background:${joinedNpc.color}">${joinedNpc.name} <span style="opacity:.85">· member</span></span>`:''}
@@ -3678,7 +3678,7 @@ function renderSidebar(){
   const pledgeColor=rep.pledge==='player'?G.playerFaction?.color||'var(--player)':rep.pledge?(G.speakerRace?.candidates.find(c=>c.factionId===rep.pledge)?.pledgeColor||G.factions.find(f=>f.id===rep.pledge)?.color||'#999'):'#999';
   const af=affinity(G.player,rep);const isCandidate=isSpeakerCandidate(rep);
   sc.innerHTML=`<div>
-    <div class="rn">Rep. ${rep.first} ${rep.last}${rep.pos==='speaker'?' <span style="color:#ffd700;font-size:14px">★</span>':(isCandidate?' <span style="color:#e8b84b;font-size:14px">★</span>':'')} <span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:${rep.party==='D'?'#2c5fa0':'#a03020'};color:white;vertical-align:middle">${rep.party==='D'?'Democrat':'Republican'}</span></div><div class="rs">${distName(rep.district)}</div>
+    <div class="rn">Rep. ${rep.first} ${rep.last}${rep.pos==='speaker'?' <span style="color:#ffd700;font-size:14px">★</span>':(isCandidate?' <span style="color:#e8b84b;font-size:14px">★</span>':'')} <span style="font-size:12.5px;font-weight:700;padding:2px 8px;border-radius:3px;background:${rep.party==='D'?'#4a85d4':'#c84a3d'};color:white;vertical-align:middle;letter-spacing:.02em">${rep.party==='D'?'Democrat':'Republican'}</span></div><div class="rs">${distName(rep.district)}</div>
     ${isCandidate?`<div class="pledge-badge" style="background:#7a5c00;margin-bottom:4px">★ Speaker Candidate</div>`:''}
     ${pl?`<div class="ptag">${pl}</div>`:''}${facName?`<span class="ftag" style="background:${getFactionColor(rep)}">${facName}${inPF?' ★':''}</span>`:''}
     ${pledgeLabel?`<div class="pledge-badge" style="background:${pledgeColor}">${pledgeLabel}</div>`:''}
