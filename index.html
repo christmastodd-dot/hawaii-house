@@ -888,7 +888,14 @@ function affinity(player,rep){
   if(player.district===rep.district)s+=25;
   if(player.ethnicity===rep.ethnicity)s+=20;
   if(player.gender===rep.gender)s+=15;
-  return s/100;
+  // Seniority cohort — shared term in office creates a real bond. Strongest among
+  // freshmen ("class of"), softer at higher tenure but never zero. Adjacent classes
+  // still get a small bump.
+  const sd=Math.abs((player.seniority||0)-(rep.seniority||0));
+  if(sd===0) s+=(player.seniority===0?15:player.seniority<=2?12:9);
+  else if(sd===1) s+=5;
+  else if(sd===2) s+=2;
+  return Math.min(1,s/115);
 }
 function factionJoinChance(f){
   if(!f||!f.leaderId&&f.id!=='player')return null;
@@ -1126,6 +1133,19 @@ function generateFactions(){
     const count=rng(5,Math.min(12,scored.length));
     const pool=scored.slice(0,Math.min(count*2,scored.length)).map(x=>({...x}));
     const members=[];
+    // Seed with the highest-scored member as cohort anchor, then bias the
+    // remaining pool toward members within ±1-2 terms of the anchor's
+    // seniority — never strict, just a thumb on the scale.
+    if(pool.length){
+      const anchor=pool.shift();
+      members.push(anchor.r);
+      pool.forEach(x=>{
+        const sd=Math.abs(x.r.seniority-anchor.r.seniority);
+        if(sd===0)x.s+=12;
+        else if(sd===1)x.s+=6;
+        else if(sd===2)x.s+=2;
+      });
+    }
     while(members.length<count&&pool.length)members.push(weightedPick(pool).r);
     members.forEach(r=>r.factionId=def.id);
     const leader=leaderFor(def,members);
@@ -3060,7 +3080,7 @@ function makeSeat(m,viewMode){
 function renderChamber(){
   const el=document.getElementById('chamber');el.innerHTML='';
   if(G.viewMode==='faction'){
-    el.style.flex='';el.style.minHeight='';el.style.overflowY='';
+    el.style.flex='1 1 0';el.style.minHeight='0';el.style.overflowY='auto';
     el.className='faction-mode';
     const rank=p=>{if(!p)return 999;const i=LEADERSHIP.findIndex(l=>l.id===p);if(i>=0)return i;if(p.startsWith('chair-'))return 100+parseInt(p.split('-')[1]);if(p.startsWith('vc-'))return 200+parseInt(p.split('-')[1]);return 999;};
     const sortMems=(arr)=>[...arr].sort((a,b)=>rank(a.isPlayer?G.player.pos:a.pos)-rank(b.isPlayer?G.player.pos:b.pos));
@@ -3841,8 +3861,9 @@ function startGame(){
       r.relationships[other.id]=base;
     });
   });
-  // Give player a handful of starting-friendly colleagues (same party, ideologically close)
-  const samePtyReps=G.reps.filter(r=>r.party===G.player.party).sort((a,b)=>Math.abs(a.ideology-G.player.ideology)-Math.abs(b.ideology-G.player.ideology));
+  // Give player a handful of starting-friendly colleagues — same party, weighted by overall affinity
+  // (ideology, seniority cohort, district, demographics) so freshman class peers and the like surface naturally.
+  const samePtyReps=G.reps.filter(r=>r.party===G.player.party).sort((a,b)=>affinity(G.player,b)-affinity(G.player,a));
   samePtyReps.slice(0,rng(4,6)).forEach(r=>{r.disposition=rng(62,74);});
   // Assign player a starting Vice Chair if they are in the majority party
   {
