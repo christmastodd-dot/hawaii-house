@@ -1075,9 +1075,13 @@ function genParty(ideo){
   if(ideo<=80)return r<.22?'D':'R';
   return r<.05?'D':'R';
 }
+// Seniority distribution skews toward newer classes — most reps are in their first
+// few terms, senior ranks thin out and the most-veteran cohorts often have just 1-2.
+const SENIORITY_WEIGHTS=[15,12,10,8,6,4,3,2,1,1]; // index = terms served (0..9)
+function genSeniority(){return wRand(SENIORITY_WEIGHTS.map((w,i)=>({v:i,w}))).v;}
 function genRep(id,district){
   const eth=wRand(ETHNICITIES);const g=Math.random()<.45?'m':'f';const n=genName(eth.id,g);const ideo=genIdeology();
-  return{id,first:n.first,last:n.last,district,age:rng(28,72),ethnicity:eth.id,ethnicityLabel:eth.label,gender:g,ideology:ideo,party:genParty(ideo),seniority:rng(0,9),warchest:rng(15,500)*1000,pos:null,factionId:null,pledge:null,disposition:rng(28,52),introduced:true,log:[],idotY:30+((id*17)%40),joinedFactionTurn:null,powerMod:0,relationships:{}};
+  return{id,first:n.first,last:n.last,district,age:rng(28,72),ethnicity:eth.id,ethnicityLabel:eth.label,gender:g,ideology:ideo,party:genParty(ideo),seniority:genSeniority(),warchest:rng(15,500)*1000,pos:null,factionId:null,pledge:null,disposition:rng(28,52),introduced:true,log:[],idotY:30+((id*17)%40),joinedFactionTurn:null,powerMod:0,relationships:{}};
 }
 function generateReps(){
   const pool=[];for(const d of DISTRICTS)for(let i=0;i<d.seats;i++)pool.push(d.id);
