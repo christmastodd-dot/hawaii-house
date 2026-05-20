@@ -2253,23 +2253,48 @@ function generateVacancies(){
 }
 function fireVacancyAnnouncements(){
   const fired=G.reps.filter(r=>r.vacating&&!r.vacating.fired&&r.vacating.declMonth===G.month);
+  const announcements=[];
   fired.forEach(r=>{
     r.vacating.fired=true;
     const reason=r.vacating.reason;
-    let msg;
+    let msg,headline,detail,emoji;
     if(reason==='retire'){
+      emoji='🏛';headline='Retirement Announced';
+      detail=pick([
+        `Citing the demands of three decades in public service, they plan to spend more time with family.`,
+        `Allies say the decision came after a long talk with their spouse over the holidays.`,
+        `They've framed it as 'making room for the next generation' of leaders in the caucus.`,
+        `Local press is already speculating about possible Senate or board appointments down the road.`,
+      ]);
       msg=`🏛 Rep. ${r.last} (${distName(r.district)}, ${r.seniority} term${r.seniority===1?'':'s'}) announced they will retire at the end of this term.`;
     } else if(reason==='higher-office'){
       const office=pick(['Lieutenant Governor','U.S. Congress','State Senate','Mayor of Honolulu','U.S. Senate']);
+      emoji='📣';headline=`Bid for ${office}`;
+      detail=pick([
+        `The launch event drew supporters from across the state — and a few raised eyebrows in the caucus.`,
+        `Their team has reportedly been quietly building a finance committee for months.`,
+        `Polling memos circulating in the Capitol suggest they see a real opening.`,
+        `Some colleagues feel blindsided; others are already lining up endorsements.`,
+      ]);
       msg=`📣 Rep. ${r.last} (${distName(r.district)}) announced a campaign for ${office} — they will not seek re-election to the House.`;
+      r.vacating.office=office;
     } else {
       const why=pick(['family considerations','health reasons','a return to the private sector','time to pass the torch','an opportunity outside government']);
+      emoji='—';headline='Not Seeking Re-election';
+      detail=pick([
+        `Allies and staff were briefed only the day before. The announcement caught most of the Capitol off guard.`,
+        `They declined to take questions but praised their successor pool as "deep and capable."`,
+        `Sources close to the lawmaker say the decision has been months in the making.`,
+        `Their district office released a written statement; no press conference is planned.`,
+      ]);
       msg=`Rep. ${r.last} (${distName(r.district)}) announced they will not seek another term, citing ${why}.`;
+      r.vacating.why=why;
     }
     addEvent(msg);
     r.log.push({m:G.month,y:G.year,text:'Announced they would not seek re-election ('+reason+').'});
+    announcements.push({rep:r,reason,emoji,headline,detail,msg});
   });
-  return fired.length;
+  return announcements;
 }
 
 // ===== EVENTS =====
@@ -2584,8 +2609,9 @@ function endTurn(){
     addEvent(`${G.year} is an election year. Challengers may file against your district seat through June. Incumbent retirements and higher-office bids will also be announced over the coming months.`);
   }
   // Fire scheduled NPC retirement / higher-office announcements (Jan–Jun of election years)
+  let firedVacancies=[];
   if(G.year>=2028&&G.year%2===0&&G.month>=1&&G.month<=6){
-    fireVacancyAnnouncements();
+    firedVacancies=fireVacancyAnnouncements();
   }
   // Fire any scheduled NPC declarations (Jan–Jun of election years)
   let firedDecs=[];
@@ -2715,6 +2741,17 @@ function endTurn(){
     if(polEvt) cards.push({title:mTitle,sub:'Political Event',html:`<div class="msec"><div class="mev" style="font-size:13px;line-height:1.7">${polEvt}</div></div>`});
     // Capitol rumors — one card each
     npcEvtList.forEach(e=>cards.push({title:mTitle,sub:'Capitol Rumor',html:`<div class="msec"><div class="mev" style="font-size:13px;line-height:1.7">${e.text}</div></div>`}));
+    // Vacancy announcements (retirement / higher-office / not seeking re-election)
+    firedVacancies.forEach(a=>{
+      const r=a.rep;const pos=posLabel(r.pos);
+      cards.push({title:`${a.emoji} ${a.headline}`,sub:`${mTitle} · ${distName(r.district)}`,html:`
+        <div class="msec" style="border-left:3px solid ${a.reason==='higher-office'?'#e8b84b':a.reason==='retire'?'#5a82b8':'#9a4a4a'};padding-left:10px;margin-left:0">
+          <h3 style="margin-bottom:6px">Rep. ${r.first} ${r.last}${pos?` <span style="font-size:11px;color:var(--muted);font-weight:600">· ${pos}</span>`:''}</h3>
+          <div class="mev" style="font-size:13px;line-height:1.7">${a.msg}</div>
+          <div class="mev" style="opacity:.8;margin-top:6px">${a.detail}</div>
+          <div class="mev" style="margin-top:8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">${r.seniority} term${r.seniority===1?'':'s'} · ${ideoLabel(r.ideology)} · ${r.party==='D'?'Democrat':'Republican'}</div>
+        </div>`});
+    });
     // Faction departure
     if(deps.length) cards.push({title:'⚠ Caucus Departure',sub:mTitle,html:deptChartHTML(deps)});
     // New challenger declarations — one card each
