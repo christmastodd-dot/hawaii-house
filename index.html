@@ -1274,19 +1274,27 @@ const ACTIONS=[
      const chance=Math.min(.85,.40+affinity(G.player,rep)*.5+(rep.disposition-40)/150);
      const success=Math.random()<chance;
      const xferred=[];
+     let effects=null;
      if(success){
+       // Snapshot before mutations so we can apply transition disposition effects accurately
+       const fromOwn=!!G.playerFaction;
+       const fromNpcId=(!G.playerFaction&&G.player.factionId)?G.player.factionId:null;
+       const abandonedIds=fromNpcId?G.reps.filter(r=>r.factionId===fromNpcId).map(r=>r.id):[];
+       const existingNewMemberIds=G.reps.filter(r=>r.factionId===f.id).map(r=>r.id);
+       const formerName=fromOwn?G.playerFaction.name:fromNpcId?G.factions.find(ff=>ff.id===fromNpcId)?.name:null;
        if(G.playerFaction){
          G.playerFaction.members.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r){r.factionId=f.id;if(!f.members.includes(r.id))f.members.push(r.id);xferred.push(r.last);}});
          addEvent(`The ${G.playerFaction.name} has been absorbed into the ${f.name}.`);
          G.playerFaction=null;
        }
        G.player.factionId=f.id;
+       effects=applyFactionTransitionEffects({joiningFactionId:f.id,fromOwn,fromNpcId,abandonedIds,existingNewMemberIds,formerName,newFactionName:f.name});
        rep.log.push({m:G.month,y:G.year,text:`Welcomed you into the ${f.name}.`});
        addEvent(`Rep. ${rep.last} welcomed you into the ${f.name}.${xferred.length?` Your ${xferred.length} former faction member${xferred.length>1?'s':''} joined as well.`:''} You may still form a new faction or run for Speaker.`);
      }else{
        addEvent(`Rep. ${rep.last} was polite but declined — your factions remain separate.`);
      }
-     showJoinOutcome({success,rep,faction:f,chancePct:Math.round(chance*100),xferred});
+     showJoinOutcome({success,rep,faction:f,chancePct:Math.round(chance*100),xferred,effects});
    }},
   {id:'lobby-committee',label:'Lobby for Committee Seat',cost:3,needsIntro:true,hideAfterIntro:false,phase:'dec',requiresChair:true,desc:'Ask this chair to appoint you Vice Chair.',
    do(rep){if(!rep.pos||!rep.pos.startsWith('chair-')){addEvent('Target a committee chair.');return false;}if(G.player.pos){addEvent('You already hold a position.');return false;}const ci=parseInt(rep.pos.split('-')[1]);const chance=Math.min(.8,.25+affinity(G.player,rep)*.5+(rep.disposition-35)/150);if(Math.random()<chance){const ov=G.reps.find(r=>r.pos===`vc-${ci}`);if(ov)ov.pos=null;G.player.pos=`vc-${ci}`;G.player.capital=calcCapital(G.player);rep.log.push({m:G.month,y:G.year,text:`Appointed you Vice Chair of ${COMMITTEES[ci]}.`});addEvent(`Rep. ${rep.last} appointed you Vice Chair of ${COMMITTEES[ci]}. +1 capital/month.`);}else{addEvent(`Rep. ${rep.last} was appreciative but couldn't offer the seat right now.`);}}},
@@ -1679,6 +1687,42 @@ function seekLeadership(){
 function eligibleFoundingMembers(){
   return G.reps.filter(r=>r.party===G.player.party&&r.disposition>=60&&!r.factionId);
 }
+// Faction transition tuning: significant bonus for joining, 50% larger hit for jumping ship,
+// plus a small "untrustworthy" haircut on everyone else when you leave a faction.
+const FACTION_JOIN_BONUS=15;
+const FACTION_LEAVE_PENALTY=Math.round(FACTION_JOIN_BONUS*1.5);
+const FACTION_LEAVE_TRUST_HIT=5;
+function applyFactionTransitionEffects({joiningFactionId,fromOwn,fromNpcId,abandonedIds,existingNewMemberIds,formerName,newFactionName}){
+  const bonused=[];const heavyHit=[];const lightHit=[];
+  // 1) Bonus to existing members of the faction you joined
+  (existingNewMemberIds||[]).forEach(id=>{
+    const r=G.reps.find(x=>x.id===id);if(!r)return;
+    r.disposition=Math.min(100,r.disposition+FACTION_JOIN_BONUS);
+    bonused.push(r.last);
+  });
+  // 2) Heavy penalty on abandoned former-faction members (jumping ship NPC → NPC)
+  (abandonedIds||[]).forEach(id=>{
+    const r=G.reps.find(x=>x.id===id);if(!r)return;
+    r.disposition=Math.max(0,r.disposition-FACTION_LEAVE_PENALTY);
+    heavyHit.push(r.last);
+  });
+  // 3) Small untrustworthy hit on everyone else if there was a leaving event
+  if(fromOwn||fromNpcId){
+    G.reps.forEach(r=>{
+      if(r.factionId===joiningFactionId)return; // new-faction members (incl just-merged)
+      if((abandonedIds||[]).includes(r.id))return; // already heavily hit
+      r.disposition=Math.max(0,r.disposition-FACTION_LEAVE_TRUST_HIT);
+      lightHit.push(r.last);
+    });
+  }
+  if(heavyHit.length||lightHit.length){
+    const parts=[];
+    if(heavyHit.length)parts.push(`${formerName||'former caucus'} members feel abandoned (−${FACTION_LEAVE_PENALTY})`);
+    if(lightHit.length)parts.push(`${lightHit.length} other colleagues see the switch as a trust issue (−${FACTION_LEAVE_TRUST_HIT})`);
+    addEvent(`Switching to ${newFactionName||'a new caucus'} drew reactions: ${parts.join('; ')}.`);
+  }
+  return {bonused:bonused.length,heavyHit:heavyHit.length,lightHit:lightHit.length,fromOwn,fromNpcId};
+}
 function showFoundFaction(){
   const pool=eligibleFoundingMembers();
   if(pool.length<3){
@@ -1731,19 +1775,29 @@ function showFoundFaction(){
         r.joinedFactionTurn=G.careerStats.turns;
         G.playerFaction.members.push(r.id);
         r.log.push({m:G.month,y:G.year,text:`Founding member of the ${name}.`});
+        // Founding members commit emotionally — significant disposition bonus toward you
+        r.disposition=Math.min(100,r.disposition+FACTION_JOIN_BONUS);
         joined.push(r.last);
       }
     });
-    addEvent(`You founded the ${name} with ${joined.length} founding members: ${joined.join(', ')}.`);
+    addEvent(`You founded the ${name} with ${joined.length} founding members: ${joined.join(', ')}. (+${FACTION_JOIN_BONUS} disposition to founders)`);
     ok.onclick=closeModal;ok.textContent='Continue →';ok.disabled=false;ok.style.opacity='1';
     closeModal();render();
   };
   document.getElementById('overlay').classList.add('active');
 }
 
-function showJoinOutcome({success,rep,faction,chancePct,xferred}){
+function showJoinOutcome({success,rep,faction,chancePct,xferred,effects}){
   const title=success?'Welcomed into the Caucus':'Request Declined';
   const sub=success?`You are now a member of ${faction.name}`:`${faction.name} remains independent of you`;
+  const effectsHtml=success&&effects?(()=>{
+    const lines=[];
+    if(effects.bonused)lines.push(`<span style="color:var(--ally)">+${FACTION_JOIN_BONUS}</span> disposition with ${effects.bonused} new caucus member${effects.bonused>1?'s':''}.`);
+    if(effects.heavyHit)lines.push(`<span style="color:var(--hostile)">−${FACTION_LEAVE_PENALTY}</span> disposition with ${effects.heavyHit} member${effects.heavyHit>1?'s':''} of your former caucus — they feel abandoned.`);
+    if(effects.lightHit)lines.push(`<span style="color:var(--cool)">−${FACTION_LEAVE_TRUST_HIT}</span> with ${effects.lightHit} other colleagues — switching sides reads as a trust issue.`);
+    if(!lines.length)return '';
+    return `<div class="msec"><h3>Reactions Across the Chamber</h3>${lines.map(l=>`<div class="mev">${l}</div>`).join('')}</div>`;
+  })():'';
   showModal(title,sub,()=>`
     <div class="msec">
       <div class="mev" style="font-size:13px;line-height:1.7">
@@ -1755,6 +1809,7 @@ function showJoinOutcome({success,rep,faction,chancePct,xferred}){
       ${success&&xferred&&xferred.length?`<div class="mev">Your ${xferred.length} former faction member${xferred.length>1?'s':''} (${xferred.join(', ')}) transferred over with you.</div>`:''}
       ${success?`<div class="mev" style="margin-top:10px"><em>You may still form a new faction or run for Speaker later.</em></div>`:`<div class="mev" style="margin-top:10px;opacity:.75">Build the relationship further — a higher disposition with Rep. ${rep.last} will improve your odds.</div>`}
     </div>
+    ${effectsHtml}
   `);
 }
 
