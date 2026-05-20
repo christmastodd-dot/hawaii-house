@@ -895,12 +895,12 @@ function affinity(player,rep){
   if(player.gender===rep.gender)s+=15;
   // Seniority cohort — shared term in office creates a real bond. Strongest among
   // freshmen ("class of"), softer at higher tenure but never zero. Adjacent classes
-  // still get a small bump.
+  // still get a meaningful bump.
   const sd=Math.abs((player.seniority||0)-(rep.seniority||0));
-  if(sd===0) s+=(player.seniority===0?15:player.seniority<=2?12:9);
-  else if(sd===1) s+=5;
-  else if(sd===2) s+=2;
-  return Math.min(1,s/115);
+  if(sd===0) s+=(player.seniority===0?24:player.seniority<=2?19:14);
+  else if(sd===1) s+=9;
+  else if(sd===2) s+=4;
+  return Math.min(1,s/124);
 }
 function factionJoinChance(f){
   if(!f||!f.leaderId&&f.id!=='player')return null;
@@ -1130,13 +1130,17 @@ function generateFactions(){
     return r.seniority*10+r.age/5; // seniority
   }
   function leaderFor(def,mems){
-    if(def.strategy==='ideology')return[...mems].sort((a,b)=>a.ideology-b.ideology)[0];
-    if(def.strategy==='warchest')return mems.reduce((a,b)=>b.warchest>a.warchest?b:a);
-    if(def.strategy==='district'){const t=mems.filter(r=>RURAL.includes(r.district));return(t.length?t:mems).reduce((a,b)=>b.seniority>a.seniority?b:a);}
-    return mems.reduce((a,b)=>b.seniority>a.seniority?b:a);
+    // Freshmen don't lead unless the faction is entirely freshmen
+    const eligible=mems.filter(r=>r.seniority>0);
+    const pool=eligible.length?eligible:mems;
+    if(def.strategy==='ideology')return[...pool].sort((a,b)=>a.ideology-b.ideology)[0];
+    if(def.strategy==='warchest')return pool.reduce((a,b)=>b.warchest>a.warchest?b:a);
+    if(def.strategy==='district'){const t=pool.filter(r=>RURAL.includes(r.district));return(t.length?t:pool).reduce((a,b)=>b.seniority>a.seniority?b:a);}
+    return pool.reduce((a,b)=>b.seniority>a.seniority?b:a);
   }
   function buildFaction(def){
-    const partyReps=G.reps.filter(r=>!r.factionId&&r.party===def.party);
+    // Freshmen start unaffiliated so a freshman cohort can self-organize
+    const partyReps=G.reps.filter(r=>!r.factionId&&r.party===def.party&&r.seniority>0);
     const scored=partyReps.map(r=>({r,s:scoreFor(def,r)})).filter(x=>x.s>-90).sort((a,b)=>b.s-a.s);
     if(scored.length<4)return false;
     const count=rng(5,Math.min(12,scored.length));
