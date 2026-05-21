@@ -123,6 +123,8 @@ body{
 }
 .seat::after{content:'';position:absolute;inset:0;border-radius:4px;background:linear-gradient(135deg,rgba(255,255,255,.14) 0%,transparent 55%);pointer-events:none;}
 .seat:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.55);z-index:10;}
+.seat .seat-init{display:block;font-size:7px;line-height:1;opacity:.85;margin-bottom:1px;letter-spacing:.04em;}
+.seat .seat-last{display:block;line-height:1;}
 .seat .gos-badge{position:absolute;top:-4px;right:-4px;width:13px;height:13px;border-radius:50%;background:#e8b84b;color:#1a1a1f;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--bg);z-index:3;pointer-events:none;line-height:1;letter-spacing:0;font-family:'Inconsolata',monospace;box-shadow:0 0 0 1px rgba(0,0,0,.4);}
 .seat .pty{position:absolute;bottom:0;left:0;right:0;font-size:9px;font-weight:900;line-height:1;padding:2px 0;border-radius:0 0 3px 3px;color:#fff;letter-spacing:.04em;pointer-events:none;z-index:2;text-align:center;}
 .seat .pty.d{background:#4a85d4;}
@@ -781,13 +783,41 @@ const ETHNICITIES=[
   {id:'korean',label:'Korean American',w:5},
 ];
 const NAMES={
-  japanese:{m:['Ken','Brian','Dean','Kyle','Ryan','Craig','Glenn','Todd','Lance','Reid','Mark','Troy','Scott','Corey','Gregg','Ron','Beau','Chad'],f:['Lynn','Colleen','Dana','Cynthia','Karen','Sharon','Diane','Valerie','Joyce','Linda','Noriko','Yuki','Carol'],last:['Yamamoto','Takahashi','Nakamura','Ito','Kobayashi','Matsumoto','Shimizu','Yamaguchi','Ogawa','Nishimura','Fujii','Hayashi','Kimura','Tanaka','Watanabe','Okamoto','Kato','Nakashima','Hirano','Fujita','Onishi','Miyamoto']},
-  white:{m:['Tom','John','Mark','Chris','Robert','David','James','Michael','Patrick','Steven','Brian','Kevin','Timothy','William','Richard'],f:['Sarah','Jennifer','Patricia','Elizabeth','Susan','Angela','Catherine','Melissa','Laura','Heather','Megan','Rachel'],last:['Smith','Johnson','Williams','Brown','Davis','Miller','Wilson','Moore','Taylor','Anderson','Thomas','White','Martin','Thompson','Harris','Clark','Lewis','Young','Walker']},
-  filipino:{m:['Romy','Joey','Mark','John','Ryan','Karl','Felix','Henry','Noel','Ronald','Roderick','Dennis','Albert','Gilbert'],f:['Grace','Maria','Cynthia','Bernadette','Jocelyn','Maricel','Rowena','Leonora','Marisol','Carmelita'],last:['Reyes','Garcia','Santos','Cruz','Ramos','Gonzalez','Torres','Flores','Castillo','Bautista','Pascual','Villanueva','Aquino','Rivera','Lagman','Cachola']},
-  mixed:{m:['Derek','Jarrett','Ty','Sol','Darien','Kalani','Micah','Jordan','Logan','Cody','Keawe'],f:['Rynette','Leinani','Mahealani','Kalei','Tara','Shay','Brianna','Aiyana'],last:['Medeiros','DeSilva','Rodrigues','Freitas','Vieira','Cabanilla','Fonoti','Tupola','Savali','Perez','Magaoay']},
-  hawaiian:{m:['Kaniela','Kaleo','Kawika','Kapono','Keoni','Kekoa','Ikaika','Makoa','Nainoa','Kamana'],f:['Mahina','Kehau','Maile','Haunani','Lani','Nohea','Hina','Malia','Kiana','Kealani'],last:['Kahananui','Kealoha','Akana','Kahanamoku','Kahele','Hookano','Kamaka','Kalama','Nahale','Makoa','Akaka']},
-  chinese:{m:['Calvin','Albert','Nelson','Garret','Michael','Kenneth','Stanley','Norman','Gordon','Clifton'],f:['Lori','Donna','Cynthia','Sandra','Gloria','Elaine','Constance','Iris'],last:['Chun','Chang','Chen','Wong','Lee','Lau','Fong','Mau','Chong','Young','Chin','Yee','Ching','Mark','Tam']},
-  korean:{m:['Brian','Gene','Chris','Daniel','Tommy','Andrew','Jason','Samuel'],f:['Linda','Joy','Karen','Christine','Angela','Susan'],last:['Kim','Park','Lee','Choi','Jung','Kang','Yoon','Cho','Han','Shin']},
+  japanese:{
+    m:['Ken','Brian','Dean','Kyle','Ryan','Craig','Glenn','Todd','Lance','Reid','Mark','Troy','Scott','Corey','Gregg','Ron','Beau','Chad','Hiroshi','Kenji','Takashi','Akira','Daisuke','Shinji','Tatsuo','Noboru','Eiji','Masaru','Tetsu','Yutaka','Isamu','Naoki','Jiro','Toshio','Yoshi','Hideo','Tadashi','Makoto','Satoshi'],
+    f:['Lynn','Colleen','Dana','Cynthia','Karen','Sharon','Diane','Valerie','Joyce','Linda','Noriko','Yuki','Carol','Akiko','Emiko','Hiroko','Junko','Keiko','Mariko','Naomi','Reiko','Sachiko','Yumiko','Hanako','Aiko','Miyuki','Tomoko','Nanami','Setsuko','Etsuko'],
+    last:['Yamamoto','Takahashi','Nakamura','Ito','Kobayashi','Matsumoto','Shimizu','Yamaguchi','Ogawa','Nishimura','Fujii','Hayashi','Kimura','Tanaka','Watanabe','Okamoto','Kato','Nakashima','Hirano','Fujita','Onishi','Miyamoto','Aoki','Endo','Fukuda','Goto','Harada','Honda','Imai','Ishida','Iwamoto','Kasai','Kikuchi','Kojima','Kondo','Kubo','Mori','Murakami','Ota','Sakamoto','Sato','Suzuki','Takeda','Tamura','Ueda','Yamada','Yamashita','Yano','Asahi','Sugimoto']
+  },
+  white:{
+    m:['Tom','John','Mark','Chris','Robert','David','James','Michael','Patrick','Steven','Brian','Kevin','Timothy','William','Richard','Andrew','Anthony','Benjamin','Daniel','Edward','Eric','Frank','Gregory','Henry','Jason','Joseph','Joshua','Matthew','Nicholas','Peter','Sean','Stephen','Thomas','Tyler','Walter'],
+    f:['Sarah','Jennifer','Patricia','Elizabeth','Susan','Angela','Catherine','Melissa','Laura','Heather','Megan','Rachel','Amanda','Amy','Ashley','Barbara','Christina','Deborah','Emily','Hannah','Jessica','Julie','Karen','Kathleen','Kimberly','Lauren','Lisa','Mary','Michelle','Nancy','Nicole','Pamela','Rebecca','Stephanie'],
+    last:['Smith','Johnson','Williams','Brown','Davis','Miller','Wilson','Moore','Taylor','Anderson','Thomas','White','Martin','Thompson','Harris','Clark','Lewis','Young','Walker','Adams','Allen','Bell','Carter','Collins','Cooper','Edwards','Evans','Foster','Green','Hall','Hayes','Hill','Jackson','Jones','King','Long','Mitchell','Murphy','Nelson','Parker','Phillips','Reed','Roberts','Robinson','Rogers','Scott','Stewart','Turner','Ward','Wright','Bennett','Brooks','Campbell','Cox','Howard','Morgan','Murray','Patterson','Price','Richardson','Russell','Sanders','Watson','Wood']
+  },
+  filipino:{
+    m:['Romy','Joey','Mark','John','Ryan','Karl','Felix','Henry','Noel','Ronald','Roderick','Dennis','Albert','Gilbert','Antonio','Arnel','Benjie','Carlos','Domingo','Edgardo','Eduardo','Eric','Ernesto','Ferdinand','Francisco','Honorato','Jaime','Joel','Jose','Larry','Manny','Manuel','Pedro','Reggie','Rico','Romulo','Rudy','Tito','Virgilio','Wilfredo'],
+    f:['Grace','Maria','Cynthia','Bernadette','Jocelyn','Maricel','Rowena','Leonora','Marisol','Carmelita','Aileen','Belinda','Charito','Corazon','Dolores','Editha','Elma','Erlinda','Felicidad','Imelda','Josefina','Lourdes','Luzviminda','Manuela','Norma','Pacita','Remedios','Salvacion','Teresita','Yolanda'],
+    last:['Reyes','Garcia','Santos','Cruz','Ramos','Gonzalez','Torres','Flores','Castillo','Bautista','Pascual','Villanueva','Aquino','Rivera','Lagman','Cachola','Abad','Agcaoili','Andres','Bagaoisan','Cabato','Cabreros','Caasi','Cariaga','Castro','Dela Cruz','Domingo','Espino','Fortin','Lapena','Lazaro','Lopez','Mendoza','Mercado','Pagaduan','Patricio','Quitevis','Quintos','Robosa','Rosario','Soriano','Tagaca','Tagayuna','Velasco','Yadao','Ancheta','Bumanglag','Caraang','Galang','Ibarra']
+  },
+  mixed:{
+    m:['Derek','Jarrett','Ty','Sol','Darien','Kalani','Micah','Jordan','Logan','Cody','Keawe','Bronson','Cameron','Devin','Dustin','Hayden','Jaron','Kade','Kaden','Kainoa','Kaipo','Keola','Kona','Mason','Noa','Reed','Shane','Tyson','Wyatt','Zane'],
+    f:['Rynette','Leinani','Mahealani','Kalei','Tara','Shay','Brianna','Aiyana','Alana','Anuhea','Briana','Daisha','Jaylen','Kanoe','Kaya','Layla','Lilo','Makana','Mele','Pua','Sela','Sky','Tehani','Tiana','Tiare'],
+    last:['Medeiros','DeSilva','Rodrigues','Freitas','Vieira','Cabanilla','Fonoti','Tupola','Savali','Perez','Magaoay','Andrade','Bolosan','Carvalho','Costa','Faulkner','Fonseca','Galarsa','Goncalves','Iaea','Kahawaii','Kahaulelio','Kalua','Manuia','Mendes','Olivera','Palu','Pereira','Silva','Sousa','Tavares','Tausaga','Vincente','Whitten','Brede','Holokai','Kahalehoe','Kanahele','Manaole','Pavao','Quintana','Tagovailoa','Talo','Taua','Toledo','Vargas']
+  },
+  hawaiian:{
+    m:['Kaniela','Kaleo','Kawika','Kapono','Keoni','Kekoa','Ikaika','Makoa','Nainoa','Kamana','Alapai','Anela','Bronson','Hekili','Iolani','Kahiau','Kainoa','Kaipo','Kalei','Kana','Kanaloa','Kawai','Keaka','Kealii','Keanu','Kekai','Kelii','Kimo','Kona','Lonoa','Lopaka','Makaio','Manu','Maui','Nakoa','Pono','Wailoa'],
+    f:['Mahina','Kehau','Maile','Haunani','Lani','Nohea','Hina','Malia','Kiana','Kealani','Anuhea','Halia','Hokulani','Iolana','Kaimana','Kalani','Kawehi','Kekoa','Lehua','Leialoha','Leilani','Liliha','Liliuokalani','Mailelani','Manaolana','Manumea','Maylani','Moana','Naia','Noelani','Olina','Onaona','Pualani','Puanani'],
+    last:['Kahananui','Kealoha','Akana','Kahanamoku','Kahele','Hookano','Kamaka','Kalama','Nahale','Makoa','Akaka','Aiona','Akina','Apo','Apoliona','Crabbe','Hanabusa','Hanohano','Hee','Kahanu','Kalili','Kamealoha','Kanahele','Kawaa','Keohokalole','Lapilio','Loo','Maile','Mokuau','Naea','Nakookoo','Pae','Piilani','Puhi','Aki','Akiona','Ayau','Hookala','Kahale','Kahalewai','Kalawaia','Kapahu','Kaupu','Keohokapu','Lopes','Naone','Nawahine','Pahukoa','Wong-Kalu','Achiu']
+  },
+  chinese:{
+    m:['Calvin','Albert','Nelson','Garret','Michael','Kenneth','Stanley','Norman','Gordon','Clifton','Alvin','Anson','Bernard','Bing','Curtis','Donald','Edmund','Edwin','Franklin','Howard','Jeffrey','Lawrence','Lincoln','Maurice','Milton','Oliver','Owen','Quincy','Spencer','Sterling','Theodore','Vincent','Warren','Wesley','Winston'],
+    f:['Lori','Donna','Cynthia','Sandra','Gloria','Elaine','Constance','Iris','Beverly','Clarice','Daphne','Doris','Eileen','Estelle','Esther','Eva','Faye','Frances','Helen','Hilda','Janice','Jocelyn','June','Kimberly','Lily','Lorna','Mabel','Margaret','Marian','Mavis','Pearl','Phyllis','Roberta','Vivian','Wendy'],
+    last:['Chun','Chang','Chen','Wong','Lee','Lau','Fong','Mau','Chong','Young','Chin','Yee','Ching','Mark','Tam','Au','Choy','Eng','Foo','Goo','Ho','Hong','Hung','Khoo','Kong','Lai','Lam','Lim','Lo','Loo','Luke','Ng','Pang','Quan','Sing','Tan','Tang','Tom','Wu','Yeung','Chow','Dang','Jung','Kwock','Leong','Moy','Sze','Yu','Zhang']
+  },
+  korean:{
+    m:['Brian','Gene','Chris','Daniel','Tommy','Andrew','Jason','Samuel','Allen','Brandon','Bryan','Charles','Daeshik','David','Dongho','Edwin','Ethan','Hanjoon','Howard','Hyunjin','Jaehyun','Jin','John','Joon','Joseph','Justin','Kyungho','Lawrence','Min','Paul','Ronald','Sangjin','Sean','Sungho','Thomas','Wonjae','Yongho'],
+    f:['Linda','Joy','Karen','Christine','Angela','Susan','Amy','Bohyun','Caroline','Catherine','Cindy','Crystal','Diane','Esther','Eunice','Gloria','Hayoung','Helen','Hyejin','Janet','Jenny','Jiyoung','Joanne','Julie','Kelly','Kyungmi','Lily','Michelle','Mina','Sarah','Seoyeon','Sojung','Sunny','Theresa','Vivian'],
+    last:['Kim','Park','Lee','Choi','Jung','Kang','Yoon','Cho','Han','Shin','An','Bae','Baek','Chang','Cheon','Chung','Eun','Go','Hahn','Hong','Hwang','Im','Jang','Jeong','Jo','Joo','Ju','Ko','Koo','Kwak','Kwon','Lim','Min','Moon','Nam','Noh','Oh','Paek','Ryu','Seo','Seong','Son','Song','Suh','Yang','Yu','Hur','Pyo']
+  },
 };
 function ideoLabel(v){if(v<=15)return'Progressive';if(v<=30)return'Left';if(v<=45)return'Center-Left';if(v<=58)return'Moderate-Left';if(v<=65)return'Moderate';if(v<=76)return'Center-Right';if(v<=86)return'Right';if(v<=93)return'Conservative';return'Hard Right';}
 
@@ -853,6 +883,14 @@ function displayLast(p){
   if(!collides)return lname;
   const init=(p.first||'').charAt(0).toUpperCase();
   return init?`${init}. ${lname}`:lname;
+}
+// Same collision check but exposes the boolean (used by makeSeat to render the
+// initial above the last name on small placards).
+function hasLastNameCollision(p){
+  if(!p||!p.last)return false;
+  const isPlayer=p===G.player||p.isPlayer||p.id===0;
+  return G.reps.some(r=>r.last===p.last&&r.id!==(isPlayer?0:p.id))
+    ||(!isPlayer&&G.player&&G.player.last===p.last);
 }
 function dispId(s){return dispLabel(s).toLowerCase();}
 function dispColor(s){return{ally:'var(--ally)',friendly:'var(--friendly)',neutral:'var(--neutral)',cool:'var(--cool)',hostile:'var(--hostile)'}[dispId(s)];}
@@ -3596,13 +3634,20 @@ function makeSeat(m,viewMode){
   }
   const isCandidate=m.isPlayer?G.speakerRace?.declared:isSpeakerCandidate(m);
   const isSpeakerPos=(m.isPlayer?G.player.pos:m.pos)==='speaker';
-  const fullName=displayLast(m);
-  const nameTrunc=fullName.length>7?fullName.slice(0,6)+'·':fullName;
-  if(isSpeakerPos){
-    s.textContent=nameTrunc;
-    const star=document.createElement('span');star.textContent='★';star.style.color='#ffd700';s.appendChild(star);
+  const lname=m.last||'';
+  const truncated=lname.length>7?lname.slice(0,6)+'·':lname;
+  const collision=hasLastNameCollision(m);
+  const init=collision?(m.first||'').charAt(0).toUpperCase():'';
+  const starHTML=isSpeakerPos?' <span style="color:#ffd700">★</span>':(isCandidate?' <span style="color:#e8b84b">★</span>':'');
+  if(collision&&init){
+    s.innerHTML=`<span class="seat-init">${init}.</span><span class="seat-last">${truncated}${starHTML}</span>`;
   } else {
-    s.textContent=isCandidate?nameTrunc+'★':nameTrunc;
+    if(isSpeakerPos){
+      s.textContent=truncated;
+      const star=document.createElement('span');star.textContent='★';star.style.color='#ffd700';s.appendChild(star);
+    } else {
+      s.textContent=isCandidate?truncated+'★':truncated;
+    }
   }
   if(!m.isPlayer&&hasRecentGossip(m.id)){
     const b=document.createElement('span');b.className='gos-badge';b.textContent='!';b.title='In the rumor mill recently — see Gossip log';
