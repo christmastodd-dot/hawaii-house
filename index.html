@@ -3031,14 +3031,11 @@ function endTurn(){
     primaryResult=computePrimaryResult();
     if(primaryResult.unopposed){
       addEvent(`You advanced unopposed through the ${G.year} ${G.player.party==='D'?'Democratic':'Republican'} primary.`);
-      summary.push(`Unopposed in the ${G.year} primary — advancing to the general election.`);
     } else if(primaryResult.won){
       addEvent(`PRIMARY: You defeated ${primaryResult.ch.first} ${primaryResult.ch.last} — ${primaryResult.playerPct}% to ${primaryResult.chalPct}%.`);
-      summary.push(`✓ Primary victory: ${primaryResult.playerPct}% vs. ${primaryResult.chalPct}%`);
     } else {
       G.gameOver=true;
       addEvent(`PRIMARY LOSS: ${primaryResult.ch.first} ${primaryResult.ch.last} defeated you — ${primaryResult.chalPct}% to ${primaryResult.playerPct}%.`);
-      summary.push(`✗ Primary defeat: ${primaryResult.chalPct}% to ${primaryResult.playerPct}%`);
     }
   }
   // General election — November of even years
