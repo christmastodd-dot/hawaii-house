@@ -3983,7 +3983,8 @@ function showTip(e,rep){
   const candTxt=isSpeakerCandidate(rep)?'<br>★ Speaker Candidate':'';
   const partyColor=rep.isPlayer?(G.player.party==='D'?'#5a8fd4':'#d45a5a'):(rep.party==='D'?'#5a8fd4':'#d45a5a');
   const partyLbl=rep.isPlayer?G.player.party:rep.party;
-  t.innerHTML=`<strong>Rep. ${rep.last}${rep.pos==='speaker'?'<span style="color:#ffd700">★</span>':(isSpeakerCandidate(rep)?'★':'')}</strong> <span style="font-size:9px;background:${partyColor};color:white;border-radius:2px;padding:1px 4px">${partyLbl}</span><br>${distName(rep.district)}${pl?`<br><em>${pl}</em>`:''}${fn?`<br>${fn}`:''}${pledgeTxt?`<br>${pledgeTxt.replace(' · ','')}`:`<br>${dispLabel(rep.disposition)}`}${candTxt}`;
+  const standing=rep.isPlayer?'You':(pledgeTxt?pledgeTxt.replace(' · ',''):dispLabel(rep.disposition));
+  t.innerHTML=`<strong>Rep. ${rep.last}${rep.pos==='speaker'?'<span style="color:#ffd700">★</span>':(isSpeakerCandidate(rep)?'★':'')}</strong> <span style="font-size:9px;background:${partyColor};color:white;border-radius:2px;padding:1px 4px">${partyLbl}</span><br>${distName(rep.district)}${pl?`<br><em>${pl}</em>`:''}${fn?`<br>${fn}`:''}<br>${standing}${candTxt}`;
   t.style.display='block';moveTip(e);
 }
 function hideTip(){document.getElementById('tip').style.display='none';}
