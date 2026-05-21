@@ -794,10 +794,10 @@ function ideoLabel(v){if(v<=15)return'Progressive';if(v<=30)return'Left';if(v<=4
 const POL_EVENTS=[
   {id:'media',prob:.18,fire(){const b=rng(3,6);G.districtApproval=Math.min(100,G.districtApproval+b);return`Positive coverage of your district work. Approval +${b}.`;}},
   {id:'scandal',prob:.08,fire(){G.districtApproval=Math.max(0,G.districtApproval-8);const hits=G.reps.filter(r=>r.introduced).sort(()=>Math.random()-.5).slice(0,2);hits.forEach(r=>r.disposition=Math.max(0,r.disposition-7));return'A minor scandal involving your office surfaced. Approval down; some members are keeping distance.';}},
-  {id:'federal',prob:.14,fire(){const dr=G.reps.filter(r=>r.district===G.player.district&&r.introduced);dr.forEach(r=>r.disposition=Math.min(100,r.disposition+5));G.districtApproval=Math.min(100,G.districtApproval+6);return`Federal funding announced for ${distName(G.player.district)}. Your district colleagues are grateful.`;}},
+  {id:'federal',prob:.14,fire(){const dr=G.reps.filter(r=>r.district===G.player.district&&r.introduced);dr.forEach(r=>r.disposition=Math.min(maxDisposition(r),r.disposition+5));G.districtApproval=Math.min(100,G.districtApproval+6);return`Federal funding announced for ${distName(G.player.district)}. Your district colleagues are grateful.`;}},
   {id:'fracture',prob:.11,fire(){const f=pick(G.factions.filter(f=>f.members.length>8));if(!f)return null;const c=rng(1,3);f.members.sort(()=>Math.random()-.5).slice(0,c).forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r)r.factionId=null;f.members=f.members.filter(x=>x!==id);});return`The ${f.name} experienced internal disagreements. ${c} member${c>1?'s':''} left the caucus — they may be recruitable.`;}},
-  {id:'hearing',prob:.14,fire(){if(!G.player.pos)return null;const near=G.reps.filter(r=>r.introduced).sort(()=>Math.random()-.5).slice(0,3);near.forEach(r=>r.disposition=Math.min(100,r.disposition+4));return'Your committee held a high-profile hearing. Your visible role impressed colleagues.';}},
-  {id:'npc-scandal',prob:.11,fire(){const f=pick(G.factions);if(!f)return null;const leader=G.reps.find(r=>r.id===f.leaderId);if(!leader)return null;const mems=G.reps.filter(r=>f.members.includes(r.id)&&r.introduced);mems.slice(0,2).forEach(r=>r.disposition=Math.min(100,r.disposition+5));return`A scandal hit the ${f.name} leadership. Some of their members are reconsidering alliances.`;}},
+  {id:'hearing',prob:.14,fire(){if(!G.player.pos)return null;const near=G.reps.filter(r=>r.introduced).sort(()=>Math.random()-.5).slice(0,3);near.forEach(r=>r.disposition=Math.min(maxDisposition(r),r.disposition+4));return'Your committee held a high-profile hearing. Your visible role impressed colleagues.';}},
+  {id:'npc-scandal',prob:.11,fire(){const f=pick(G.factions);if(!f)return null;const leader=G.reps.find(r=>r.id===f.leaderId);if(!leader)return null;const mems=G.reps.filter(r=>f.members.includes(r.id)&&r.introduced);mems.slice(0,2).forEach(r=>r.disposition=Math.min(maxDisposition(r),r.disposition+5));return`A scandal hit the ${f.name} leadership. Some of their members are reconsidering alliances.`;}},
   {id:'district-event',prob:.12,fire(){G.districtApproval=Math.min(100,G.districtApproval+4);return`A district community event drew good turnout. Your profile in ${distName(G.player.district)} rises.`;}},
 ];
 
@@ -812,7 +812,7 @@ let G={
   pledgeDeals:[],           // [{repId, type, detail}] — promises made to secure pledges
   districtApproval:60,
   districtActionThisTurn:false,
-  fundraisedThisTurn:false,
+  fundraisersThisTurn:0,fundraisersThisInterim:0,
   pushedLegThisTurn:false,
   townHallThisTurn:false,
   mailerThisTurn:false,
@@ -1005,6 +1005,17 @@ function affinityDesc(a){
   if(a>.3)return'Moderate — some alignment.';
   if(a>.15)return'Low — limited common ground.';
   return'Very low — significant differences.';
+}
+// Max disposition another rep will warm to based on natural alignment. Freshmen
+// and same-party colleagues have a touch more headroom; very dissimilar reps
+// will never love you no matter how many lunches you buy.
+function maxDisposition(rep){
+  if(!rep||rep.isPlayer)return 100;
+  const a=affinity(G.player,rep); // 0..1
+  let cap=35+a*65;
+  if(rep.seniority===0)cap+=10;
+  if(rep.party===G.player.party)cap+=5;
+  return Math.min(100,Math.round(cap));
 }
 function getFactionColor(rep){
   if(!rep)return'#9a9aaa';
@@ -1253,16 +1264,16 @@ function calibrateWarchests(reps){
 // ===== ACTIONS =====
 const ACTIONS=[
   {id:'introduce',label:'Introduce Yourself',cost:1,needsIntro:false,hideAfterIntro:true,phase:'any',desc:"Break the ice. Unlocks their full profile.",
-   do(rep){rep.introduced=true;const b=Math.round(affinity(G.player,rep)*8)+2;rep.disposition=Math.min(100,rep.disposition+b);rep.log.push({m:G.month,y:G.year,text:'You introduced yourself.'});addEvent(`You introduced yourself to Rep. ${rep.last}. ${b>6?'You found immediate common ground.':'The exchange was cordial.'}`);}},
+   do(rep){rep.introduced=true;const b=Math.round(affinity(G.player,rep)*8)+2;rep.disposition=Math.min(maxDisposition(rep),rep.disposition+b);rep.log.push({m:G.month,y:G.year,text:'You introduced yourself.'});addEvent(`You introduced yourself to Rep. ${rep.last}. ${b>6?'You found immediate common ground.':'The exchange was cordial.'}`);}},
   {id:'gesture',label:'Social Gesture',cost:1,needsIntro:true,hideAfterIntro:false,phase:'any',desc:'Lunch, a kind note, attending their event.',
-   do(rep){const b=Math.round(affinity(G.player,rep)*5)+2;rep.disposition=Math.min(100,rep.disposition+b);const g=pick(['invited them to lunch','attended their district event','sent a congratulatory note','made an introduction for them','stopped by their office']);rep.log.push({m:G.month,y:G.year,text:`Social gesture — ${g}.`});addEvent(`You ${g} with Rep. ${rep.last}. Your relationship warmed.`);}},
+   do(rep){const b=Math.round(affinity(G.player,rep)*5)+2;rep.disposition=Math.min(maxDisposition(rep),rep.disposition+b);const g=pick(['invited them to lunch','attended their district event','sent a congratulatory note','made an introduction for them','stopped by their office']);rep.log.push({m:G.month,y:G.year,text:`Social gesture — ${g}.`});addEvent(`You ${g} with Rep. ${rep.last}. Your relationship warmed.`);}},
   {id:'favor',label:'Offer a Favor',cost:2,needsIntro:true,hideAfterIntro:false,phase:'any',requiresSecondSession:true,desc:'Help them directly. Creates reciprocal obligation. Impact scales with your power tier.',
    do(rep){
      const tier=getPowerTier(G.player.pos);
      const tierMult={1:2.5,2:2.0,3:1.6,4:1.3,5:1.0}[tier];
      const base=Math.round(affinity(G.player,rep)*6)+5;
      const b=Math.round(base*tierMult);
-     rep.disposition=Math.min(100,rep.disposition+b);
+     rep.disposition=Math.min(maxDisposition(rep),rep.disposition+b);
      rep.owesPlayerFavor=true;
      const favorPools={
        1:['steered a major appropriation to their district','blocked a hostile committee referral','green-lit one of their bills for a floor vote','put their priority on the Speaker\'s agenda'],
@@ -1277,9 +1288,9 @@ const ACTIONS=[
      addEvent(`You ${f} for Rep. ${rep.last}. They were ${reaction}. (+${b})`);
    }},
   {id:'donate',label:'Political Donation',cost:2,needsIntro:true,hideAfterIntro:false,phase:'any',desc:'Contribute $2,000 to their campaign. Once per election cycle.',
-   do(rep){if(G.donatedTo.includes(rep.id)){addEvent(`You already donated to Rep. ${rep.last} this election cycle.`);return false;}if(G.player.warchest<2000){addEvent('Your warchest is too thin for a donation right now.');return false;}G.player.warchest-=2000;rep.warchest+=2000;G.donatedTo.push(rep.id);const b=Math.round(affinity(G.player,rep)*6)+5;rep.disposition=Math.min(100,rep.disposition+b);rep.log.push({m:G.month,y:G.year,text:'Received a $2,000 campaign donation from you.'});addEvent(`You donated $2,000 to Rep. ${rep.last}'s campaign. Real appreciation expressed.`);}},
+   do(rep){if(G.donatedTo.includes(rep.id)){addEvent(`You already donated to Rep. ${rep.last} this election cycle.`);return false;}if(G.player.warchest<2000){addEvent('Your warchest is too thin for a donation right now.');return false;}G.player.warchest-=2000;rep.warchest+=2000;G.donatedTo.push(rep.id);const b=Math.round(affinity(G.player,rep)*6)+5;rep.disposition=Math.min(maxDisposition(rep),rep.disposition+b);rep.log.push({m:G.month,y:G.year,text:'Received a $2,000 campaign donation from you.'});addEvent(`You donated $2,000 to Rep. ${rep.last}'s campaign. Real appreciation expressed.`);}},
   {id:'cosponsor',label:'Co-sponsor a Bill',cost:2,needsIntro:true,hideAfterIntro:false,phase:'dec-jan',desc:'Sign onto their legislation. Signals shared priorities. Available in December and January when bills are being drafted.',
-   do(rep){const b=Math.round(affinity(G.player,rep)*5)+6;rep.disposition=Math.min(100,rep.disposition+b);const sp=G.reps.filter(r=>r.introduced&&r.id!==rep.id&&Math.abs(r.ideology-rep.ideology)<=10).slice(0,3);sp.forEach(r=>r.disposition=Math.min(100,r.disposition+3));const bill=pick(['affordable housing bill','clean energy bill','education funding measure','tourism reform act','water conservation bill','workforce development bill']);rep.log.push({m:G.month,y:G.year,text:`You co-sponsored their ${bill}.`});addEvent(`You co-sponsored Rep. ${rep.last}'s ${bill}.${sp.length?` Also warmed relations with ${sp.length} colleague${sp.length>1?'s':''}.`:''}`);}},
+   do(rep){const b=Math.round(affinity(G.player,rep)*5)+6;rep.disposition=Math.min(maxDisposition(rep),rep.disposition+b);const sp=G.reps.filter(r=>r.introduced&&r.id!==rep.id&&Math.abs(r.ideology-rep.ideology)<=10).slice(0,3);sp.forEach(r=>r.disposition=Math.min(maxDisposition(r),r.disposition+3));const bill=pick(['affordable housing bill','clean energy bill','education funding measure','tourism reform act','water conservation bill','workforce development bill']);rep.log.push({m:G.month,y:G.year,text:`You co-sponsored their ${bill}.`});addEvent(`You co-sponsored Rep. ${rep.last}'s ${bill}.${sp.length?` Also warmed relations with ${sp.length} colleague${sp.length>1?'s':''}.`:''}`);}},
   {id:'committee-maneuver',label:'Committee Maneuver',cost:3,needsIntro:true,hideAfterIntro:false,phase:'session',requiresPlayerPos:true,desc:'Use your committee position to advance their priorities. Impact scales with your power tier.',
    do(rep){
      if(!G.player.pos){addEvent('You need a committee position first.');return false;}
@@ -1287,7 +1298,7 @@ const ACTIONS=[
      const tierMult={1:2.6,2:2.0,3:1.6,4:1.3,5:1.0}[tier]||1.0;
      const base=Math.round(affinity(G.player,rep)*6)+8;
      const b=Math.round(base*tierMult);
-     rep.disposition=Math.min(100,rep.disposition+b);
+     rep.disposition=Math.min(maxDisposition(rep),rep.disposition+b);
      const oppHit=Math.min(5,Math.round(4*tierMult));
      const oppCount=tier<=2?4:tier===3?3:2;
      const opp=G.reps.filter(r=>r.introduced&&r.ideology>rep.ideology+20);
@@ -1313,15 +1324,18 @@ const ACTIONS=[
      // Near-impossible for friendlies; moderate for allies; existing faction members are harder
      let chance=isAlly?(inOtherFaction?0.22:0.50):(inOtherFaction?0.03:0.07);
      chance=Math.min(chance+affinity(G.player,rep)*0.12,isAlly?0.78:0.15);
+     const chancePct=Math.round(chance*100);
      if(Math.random()>chance){
        addEvent(isAlly?`Rep. ${rep.last} respects the offer but isn't ready to commit${inOtherFaction?' — leaving their current faction is a big step':''}.`:
          `Rep. ${rep.last} is flattered but won't commit. Build to Ally status first.`);
+       showRecruitOutcome({success:false,rep,chancePct,isAlly,inOtherFaction});
        return false;
      }
      if(rep.factionId){const old=G.factions.find(f=>f.id===rep.factionId);if(old)old.members=old.members.filter(id=>id!==rep.id);}
      rep.factionId='player';rep.joinedFactionTurn=G.careerStats.turns;G.playerFaction.members.push(rep.id);
      rep.log.push({m:G.month,y:G.year,text:'Joined your faction.'});
      addEvent(`Rep. ${rep.last} joined the ${G.playerFaction.name}. (${G.playerFaction.members.length} members)`);
+     showRecruitOutcome({success:true,rep,chancePct,isAlly,inOtherFaction});
    }},
   {id:'join-caucus',label:'Request to Join Their Faction',cost:2,needsIntro:true,hideAfterIntro:false,phase:'any',requiresFactionLeader:true,desc:'Dissolve your faction and merge into theirs.',
    do(rep){
@@ -1399,7 +1413,7 @@ const ACTIONS=[
        // Soft disposition bump for all members of the combined caucus — but no untrustworthy hit
        // since this was a mutual merger, not jumping ship.
        const combinedId=playerLeads?'player':targetF.id;
-       G.reps.filter(r=>r.factionId===combinedId).forEach(r=>{r.disposition=Math.min(100,r.disposition+8);});
+       G.reps.filter(r=>r.factionId===combinedId).forEach(r=>{r.disposition=Math.min(maxDisposition(r),r.disposition+8);});
      }else{
        addEvent(`Rep. ${rep.last} declined the merger — the ${targetF.name} prefers to stay independent for now.`);
      }
@@ -1425,9 +1439,9 @@ const ACTIONS=[
   {id:'flip-pledge',label:'Flip Their Pledge',cost:3,needsIntro:true,hideAfterIntro:false,phase:'raceActive',requiresRivalPledge:true,desc:"Pull a rival-pledged member to your side.",
    do(rep){if(!G.speakerRace?.active){return false;}const chance=Math.min(.65,.15+affinity(G.player,rep)*.5+(rep.disposition-35)/120);if(Math.random()<chance){const old=G.speakerRace.candidates.find(c=>c.factionId===rep.pledge);if(old)old.pledges=old.pledges.filter(id=>id!==rep.id);rep.pledge='player';rep.log.push({m:G.month,y:G.year,text:'Flipped their pledge to you.'});addEvent(`Rep. ${rep.last} has switched their pledge to you. A significant pickup.`);}else{rep.disposition=Math.max(0,rep.disposition-3);addEvent(`Rep. ${rep.last} declined to switch and seems annoyed you asked.`);};}},
   {id:'travel',label:'Travel Together',cost:2,needsIntro:true,hideAfterIntro:false,phase:'any',requiresAfterSession1:true,desc:'Visit a district or event together. Builds genuine personal rapport. Unlocks after the first session.',
-   do(rep){const b=Math.round(affinity(G.player,rep)*9)+6;rep.disposition=Math.min(100,rep.disposition+b);const dest=pick([distName(rep.district),distName(G.player.district),'Maui','the Big Island','Kauaʻi','a conference on Oʻahu']);const act=pick(['attended a community event','toured local infrastructure projects','visited constituent groups','participated in a district cleanup','attended a town hall together']);rep.log.push({m:G.month,y:G.year,text:`Traveled with you to ${dest}.`});if(rep.district===G.player.district)G.districtActionThisTurn=true;addEvent(`You and Rep. ${rep.last} ${act} in ${dest}. The shared experience noticeably strengthened your bond.`);}},
+   do(rep){const b=Math.round(affinity(G.player,rep)*9)+6;rep.disposition=Math.min(maxDisposition(rep),rep.disposition+b);const dest=pick([distName(rep.district),distName(G.player.district),'Maui','the Big Island','Kauaʻi','a conference on Oʻahu']);const act=pick(['attended a community event','toured local infrastructure projects','visited constituent groups','participated in a district cleanup','attended a town hall together']);rep.log.push({m:G.month,y:G.year,text:`Traveled with you to ${dest}.`});if(rep.district===G.player.district)G.districtActionThisTurn=true;addEvent(`You and Rep. ${rep.last} ${act} in ${dest}. The shared experience noticeably strengthened your bond.`);}},
   {id:'endorse',label:'Endorse in Election',cost:2,needsIntro:true,hideAfterIntro:false,phase:'nov-even',desc:'Publicly back their reelection campaign. Big reward if they win.',
-   do(rep){const win=Math.random()<.82;if(win){rep.disposition=Math.min(100,rep.disposition+12);rep.warchest+=rng(5,15)*1000;rep.log.push({m:G.month,y:G.year,text:'You endorsed them — they won.'});addEvent(`You endorsed Rep. ${rep.last}, who won reelection. They are deeply grateful.`);}else{rep.disposition=Math.max(0,rep.disposition-5);rep.log.push({m:G.month,y:G.year,text:'You endorsed them — they lost.'});addEvent(`You endorsed Rep. ${rep.last}, who lost. Your political judgment was questioned.`);};}},
+   do(rep){const win=Math.random()<.82;if(win){rep.disposition=Math.min(maxDisposition(rep),rep.disposition+12);rep.warchest+=rng(5,15)*1000;rep.log.push({m:G.month,y:G.year,text:'You endorsed them — they won.'});addEvent(`You endorsed Rep. ${rep.last}, who won reelection. They are deeply grateful.`);}else{rep.disposition=Math.max(0,rep.disposition-5);rep.log.push({m:G.month,y:G.year,text:'You endorsed them — they lost.'});addEvent(`You endorsed Rep. ${rep.last}, who lost. Your political judgment was questioned.`);};}},
   // UNDERMINE ACTIONS
   {id:'plant-story',label:'Plant a Negative Story',cost:1,needsIntro:true,hideAfterIntro:false,phase:'any',undermine:true,
    desc:'Feed a damaging angle to a local journalist. Erodes their political standing and strains peer relationships. Risk: they may suspect you.',
@@ -1502,7 +1516,7 @@ const ACTIONS=[
        factionPeers.sort(()=>Math.random()-.5).slice(0,nDamaged).forEach(peer=>{
          if(rep.relationships)rep.relationships[peer.id]=Math.max(0,(rep.relationships[peer.id]||65)-rng(8,15));
          if(peer.relationships)peer.relationships[rep.id]=Math.max(0,(peer.relationships[rep.id]||65)-rng(8,15));
-         if(Math.random()<0.25)peer.disposition=Math.min(100,peer.disposition+rng(3,7));
+         if(Math.random()<0.25)peer.disposition=Math.min(maxDisposition(peer),peer.disposition+rng(3,7));
        });
        const doubter=factionPeers[0];
        if(doubter){
@@ -1642,11 +1656,21 @@ function doAction(actId,repId){
 }
 
 // ===== GLOBAL ACTIONS =====
+function maxFundraisersThisMonth(){return getPowerTier(G.player.pos)===1?2:1;}
+function maxFundraisersThisInterim(){
+  if(G.player.seniority===0)return 3;
+  const tier=getPowerTier(G.player.pos);
+  return tier===1?6:tier===2?5:tier===3?5:tier===4?4:3;
+}
 function doFundraise(){
   if(G.gameOver||G.gameWon)return;
   if(getPhase(G.month)!=='Interim'){addEvent('Fundraising is only available during the interim (June–October).');return;}
-  if(G.fundraisedThisTurn){addEvent('You\'ve already held a fundraiser this month.');return;}
-  G.fundraisedThisTurn=true;
+  const monthCap=maxFundraisersThisMonth();
+  const interimCap=maxFundraisersThisInterim();
+  if((G.fundraisersThisTurn||0)>=monthCap){addEvent(`You've already held ${monthCap} fundraiser${monthCap>1?'s':''} this month.`);return;}
+  if((G.fundraisersThisInterim||0)>=interimCap){addEvent(`You've hit this interim's cap of ${interimCap} fundraiser${interimCap>1?'s':''} (${G.player.seniority===0?'first-term limit':'based on your position'}). Next chance is next interim.`);return;}
+  G.fundraisersThisTurn=(G.fundraisersThisTurn||0)+1;
+  G.fundraisersThisInterim=(G.fundraisersThisInterim||0)+1;
   const mult=ideoPenalty(G.player.ideology);
   // Junior incumbents have a thinner donor network — first couple of terms raise less
   const s=G.player.seniority;
@@ -1657,7 +1681,7 @@ function doFundraise(){
   G.player.warchest+=extra;
   const ideNote=mult<0.6?' (limited donor pool for your ideology)':mult<0.9?' (moderate donor base)':'';
   const seniorityNote=s<=1?' Your donor network is still building.':'';
-  addEvent(`Fundraiser held. Raised ${fmtMoney(gain)}${ideNote}.${seniorityNote}${extra?` Plus ${fmtMoney(extra)} from allied members.`:''}`);
+  addEvent(`Fundraiser held (${G.fundraisersThisInterim}/${maxFundraisersThisInterim()} this interim). Raised ${fmtMoney(gain)}${ideNote}.${seniorityNote}${extra?` Plus ${fmtMoney(extra)} from allied members.`:''}`);
   checkMilestones();render();
 }
 
@@ -1773,7 +1797,7 @@ function hostFactionPauHana(factionId){
     const chance=Math.min(0.95,0.32+(rep.disposition/100)*0.62);
     if(Math.random()<chance){
       const boost=rng(5,10);
-      rep.disposition=Math.min(100,rep.disposition+boost);
+      rep.disposition=Math.min(maxDisposition(rep),rep.disposition+boost);
       rep.log.push({m:G.month,y:G.year,text:`Attended a joint pau hana with your caucus — relationship warmed (+${boost}).`});
       attended.push({rep,boost});
     } else {
@@ -1814,7 +1838,7 @@ function resolvePauHana(repIds){
     const chance=Math.min(0.95,0.18+(rep.disposition/100)*0.77);
     if(Math.random()<chance){
       const boost=rng(7,13);
-      rep.disposition=Math.min(100,rep.disposition+boost);
+      rep.disposition=Math.min(maxDisposition(rep),rep.disposition+boost);
       rep.log.push({m:G.month,y:G.year,text:`Attended your pau hana — relationship warmed (+${boost}).`});
       attended.push({rep,boost});
     } else {
@@ -1867,7 +1891,7 @@ function applyFactionTransitionEffects({joiningFactionId,fromOwn,fromNpcId,aband
   // 1) Bonus to existing members of the faction you joined
   (existingNewMemberIds||[]).forEach(id=>{
     const r=G.reps.find(x=>x.id===id);if(!r)return;
-    r.disposition=Math.min(100,r.disposition+FACTION_JOIN_BONUS);
+    r.disposition=Math.min(maxDisposition(r),r.disposition+FACTION_JOIN_BONUS);
     bonused.push(r.last);
   });
   // 2) Heavy penalty on abandoned former-faction members (jumping ship NPC → NPC)
@@ -1946,7 +1970,7 @@ function showFoundFaction(){
         G.playerFaction.members.push(r.id);
         r.log.push({m:G.month,y:G.year,text:`Founding member of the ${name}.`});
         // Founding members commit emotionally — significant disposition bonus toward you
-        r.disposition=Math.min(100,r.disposition+FACTION_JOIN_BONUS);
+        r.disposition=Math.min(maxDisposition(r),r.disposition+FACTION_JOIN_BONUS);
         joined.push(r.last);
       }
     });
@@ -1955,6 +1979,23 @@ function showFoundFaction(){
     closeModal();render();
   };
   document.getElementById('overlay').classList.add('active');
+}
+
+function showRecruitOutcome({success,rep,chancePct,isAlly,inOtherFaction}){
+  const title=success?'Recruited to Your Caucus':'Recruitment Declined';
+  const sub=success?`Rep. ${rep.last} has joined the ${G.playerFaction?.name||'caucus'}`:`Rep. ${rep.last} stays put`;
+  const body=success
+    ?`<strong>Rep. ${rep.last}</strong> agreed to join the <strong>${G.playerFaction?.name||'caucus'}</strong>.${inOtherFaction?' They left their previous caucus to come with you.':''}`
+    :`<strong>Rep. ${rep.last}</strong> ${isAlly?`respects the offer but isn't ready to commit${inOtherFaction?' — leaving their current faction is a big step':''}`:`is flattered but won't commit. Build to Ally status (80+) first`}.`;
+  const tip=success?'':(isAlly?'Keep working the relationship — the next ask has the same odds, but a colleague switching factions takes time.':'Bring them to Ally first; co-sponsoring, pau hana, and favors all help.');
+  showModal(title,sub,()=>`
+    <div class="msec">
+      <div class="mev" style="font-size:13px;line-height:1.7">${body}</div>
+      <div class="mev" style="opacity:.75">Acceptance chance was about <strong>${chancePct}%</strong>. ${isAlly?'They were already an Ally':'They were Friendly but not yet Ally'}${inOtherFaction?' and currently belong to another caucus.':'.'}</div>
+      ${tip?`<div class="mev" style="margin-top:8px;opacity:.85"><em>${tip}</em></div>`:''}
+      ${success&&G.playerFaction?`<div class="mev" style="margin-top:8px">${G.playerFaction.name} now has <strong>${G.playerFaction.members.length+1}</strong> members.</div>`:''}
+    </div>
+  `);
 }
 
 function showJoinOutcome({success,rep,faction,chancePct,xferred,effects}){
@@ -2260,7 +2301,7 @@ function runFloorVote(){
       if(d.type==='chair'){const ci=COMMITTEES.indexOf(d.detail);if(ci>=0){const prev=G.reps.find(x=>x.pos===`chair-${ci}`);if(prev)prev.pos=null;r.pos=`chair-${ci}`;dealNotes.push(`Rep. ${d.repName} → Chair of ${d.detail}`);}}
       else if(d.type==='vc'){const ci=COMMITTEES.indexOf(d.detail);if(ci>=0){const prev=G.reps.find(x=>x.pos===`vc-${ci}`);if(prev)prev.pos=null;r.pos=`vc-${ci}`;dealNotes.push(`Rep. ${d.repName} → Vice Chair of ${d.detail}`);}}
       else if(d.type==='leader'){const ldr=LEADERSHIP.find(l=>l.id===d.detail);if(ldr){const prev=G.reps.find(x=>x.pos===d.detail);if(prev)prev.pos=null;r.pos=d.detail;dealNotes.push(`Rep. ${d.repName} → ${ldr.label}`);}}
-      else if(d.type==='seat'){r.disposition=Math.min(100,r.disposition+8);dealNotes.push(`Rep. ${d.repName} → committee appointment promised`);}
+      else if(d.type==='seat'){r.disposition=Math.min(maxDisposition(r),r.disposition+8);dealNotes.push(`Rep. ${d.repName} → committee appointment promised`);}
     });
     G.pledgeDeals=[];
     addEvent(`FLOOR VOTE: You were elected Speaker of the Hawaii House with ${finalMine} votes.`);
@@ -2546,7 +2587,7 @@ function generateRumors(){
       const r1=pick(factionLeaders);if(!r1)return null;
       const r2=pick(factionLeaders.filter(r=>r.id!==r1.id&&r.party===r1.party));if(!r2)return null;
       const deepening=Math.random()<0.25;
-      if(deepening){r1.disposition=Math.min(100,r1.disposition+5);r2.disposition=Math.min(100,r2.disposition+5);}
+      if(deepening){r1.disposition=Math.min(maxDisposition(r1),r1.disposition+5);r2.disposition=Math.min(maxDisposition(r2),r2.disposition+5);}
       return {repIds:[r1.id,r2.id],text:deepening
         ?`🗣 Reps. ${r1.last} and ${r2.last} have been meeting privately multiple times this month — Capitol insiders say a formal alliance between their factions may be taking shape.`
         :`🗣 Reps. ${r1.last} and ${r2.last} were seen having lunch together at the Capitol Café. No comment from either office, but the timing is notable.`};
@@ -2566,7 +2607,7 @@ function generateRumors(){
     // Positive word about player spreading
     ()=>{
       const r=pick(introduced);if(!r)return null;
-      r.disposition=Math.min(100,r.disposition+5);
+      r.disposition=Math.min(maxDisposition(r),r.disposition+5);
       const item=pick(['praised your constituent outreach at a caucus breakfast','mentioned your name favorably in a conversation with leadership','been telling colleagues you\'re someone worth knowing','quietly advocated for you in a committee discussion']);
       return {repIds:[r.id],text:`🗣 Word has it that Rep. ${r.last} has ${item}. These things have a way of mattering more than people think.`};
     },
@@ -2596,38 +2637,50 @@ function buildElectionBarGraph(playerPct,chalPct,playerName,chalName,playerParty
   const chalColor=chalParty==='D'?'#2c5fa0':'#a03020';
   const won=playerPct>chalPct;
   const verdictColor=won?'var(--ally)':'var(--hostile)';
-  const html=`<div class="ebg-wrap">
+  // Data attributes drive the animation when the modal that contains this fragment
+  // is actually shown (see runPendingElectionAnims). Building setTimeout at HTML-
+  // construction time used to fire while a different card was on screen, so the bar
+  // was already at "100%" by the time the user saw it (or showed 0% if the IDs got
+  // re-used in another card).
+  return `<div class="ebg-wrap" data-ebg data-pp="${playerPct}" data-cp="${chalPct}">
     <div class="ebg-race-hdr">${raceTitle}</div>
     <div class="ebg-cand-row">
       <div class="ebg-cand-meta">
         <span class="ebg-cand-name" style="color:var(--player)">${playerName} <span style="font-size:9px;opacity:.6">(${playerParty})</span></span>
-        <span class="ebg-cand-pct" id="ebgPctP" style="color:var(--player)">0%</span>
+        <span class="ebg-cand-pct ebg-pct-p" style="color:var(--player)">0%</span>
       </div>
-      <div class="ebg-track"><div class="ebg-bar" id="ebgBarP" style="background:${playerColor}"><span class="ebg-bar-inner-lbl" id="ebgLblP">INCUMBENT</span></div></div>
+      <div class="ebg-track"><div class="ebg-bar ebg-bar-p" style="background:${playerColor}"><span class="ebg-bar-inner-lbl">INCUMBENT</span></div></div>
     </div>
     <div class="ebg-cand-row">
       <div class="ebg-cand-meta">
         <span class="ebg-cand-name">${chalName} <span style="font-size:9px;opacity:.6">(${chalParty})</span></span>
-        <span class="ebg-cand-pct" id="ebgPctC" style="color:${chalColor}">0%</span>
+        <span class="ebg-cand-pct ebg-pct-c" style="color:${chalColor}">0%</span>
       </div>
-      <div class="ebg-track"><div class="ebg-bar" id="ebgBarC" style="background:${chalColor}"><span class="ebg-bar-inner-lbl" id="ebgLblC">CHALLENGER</span></div></div>
+      <div class="ebg-track"><div class="ebg-bar ebg-bar-c" style="background:${chalColor}"><span class="ebg-bar-inner-lbl">CHALLENGER</span></div></div>
     </div>
-    <div class="ebg-precincts" id="ebgPrecincts">0% of precincts reporting</div>
-    <div class="ebg-verdict" id="ebgVerdict" style="color:${verdictColor}">${won?'✓ Victory':'✗ Defeat'}</div>
+    <div class="ebg-precincts">0% of precincts reporting</div>
+    <div class="ebg-verdict" style="color:${verdictColor}">${won?'✓ Victory':'✗ Defeat'}</div>
   </div>`;
-  // Trigger animation after brief delay
-  setTimeout(()=>{
-    const bP=document.getElementById('ebgBarP');
-    const bC=document.getElementById('ebgBarC');
-    const pP=document.getElementById('ebgPctP');
-    const pC=document.getElementById('ebgPctC');
-    const prec=document.getElementById('ebgPrecincts');
-    const verd=document.getElementById('ebgVerdict');
-    if(!bP||!bC)return;
-    bP.style.width=playerPct+'%';bP.classList.add('filled');
-    bC.style.width=chalPct+'%';bC.classList.add('filled');
-    // Count-up animation
-    const dur=2500;const steps=50;const interval=dur/steps;
+}
+function runPendingElectionAnims(root){
+  const scope=root||document.getElementById('m-body');
+  if(!scope)return;
+  scope.querySelectorAll('.ebg-wrap[data-ebg]').forEach(w=>{
+    if(w.dataset.animated==='true')return;
+    w.dataset.animated='true';
+    const playerPct=parseFloat(w.dataset.pp)||0;
+    const chalPct=parseFloat(w.dataset.cp)||0;
+    const bP=w.querySelector('.ebg-bar-p');
+    const bC=w.querySelector('.ebg-bar-c');
+    const pP=w.querySelector('.ebg-pct-p');
+    const pC=w.querySelector('.ebg-pct-c');
+    const prec=w.querySelector('.ebg-precincts');
+    const verd=w.querySelector('.ebg-verdict');
+    requestAnimationFrame(()=>{
+      if(bP){bP.style.width=playerPct+'%';bP.classList.add('filled');}
+      if(bC){bC.style.width=chalPct+'%';bC.classList.add('filled');}
+    });
+    const dur=2200;const steps=44;const interval=dur/steps;
     let step=0;
     const timer=setInterval(()=>{
       step++;const frac=step/steps;
@@ -2643,8 +2696,7 @@ function buildElectionBarGraph(playerPct,chalPct,playerName,chalName,playerParty
         if(verd)verd.classList.add('show');
       }
     },interval);
-  },300);
-  return html;
+  });
 }
 
 // ===== LEGISLATION =====
@@ -2765,13 +2817,13 @@ function endTurn(){
   if(G.speakerRace?.active)speakerRaceNPC();
   G.reps.forEach(r=>{
     if(r.introduced&&r.disposition>38&&!isInPlayerFaction(r.id))r.disposition=Math.max(38,r.disposition-1);
-    if(isInPlayerFaction(r.id)&&r.disposition<60)r.disposition=Math.min(100,r.disposition+1);
+    if(isInPlayerFaction(r.id)&&r.disposition<60)r.disposition=Math.min(maxDisposition(r),r.disposition+1);
     // powerMod recovers by 2 per month (negative penalties fade)
     if(r.powerMod&&r.powerMod<0)r.powerMod=Math.min(0,r.powerMod+2);
   });
   if(!G.districtActionThisTurn)G.districtApproval=Math.max(0,G.districtApproval-1);
   G.districtActionThisTurn=false;
-  G.fundraisedThisTurn=false;
+  G.fundraisersThisTurn=0;
   G.pushedLegThisTurn=false;
   G.townHallThisTurn=false;
   G.mailerThisTurn=false;
@@ -2788,6 +2840,8 @@ function endTurn(){
   G.careerStats.peakFaction=Math.max(G.careerStats.peakFaction,pfSize);
   const prevMonth=G.month;const prevYear=G.year;
   G.month++;if(G.month>12){G.month=1;G.year++;}
+  // Reset interim fundraiser counter at the start of June (new interim)
+  if(G.month===6)G.fundraisersThisInterim=0;
   // Set up declarations in January of election years
   if(G.month===1&&G.year>=2028&&G.year%2===0){
     generateElectionDeclarations();
@@ -3166,6 +3220,8 @@ function showModal(title,sub,bodyFn){
   document.getElementById('mok').onclick=closeModal;
   document.getElementById('mok').textContent='Continue →';
   document.getElementById('overlay').classList.add('active');
+  // Fire any pending visual animations now that the markup is live in the DOM.
+  if(typeof runPendingElectionAnims==='function')runPendingElectionAnims();
 }
 function closeModal(){document.getElementById('overlay').classList.remove('active');document.getElementById('cc-bg').style.display='none';hideMdecline();}
 function hideMdecline(){const d=document.getElementById('mdecline');d.style.display='none';d.onclick=null;}
@@ -4044,7 +4100,9 @@ function renderSidebar(){
     const pl=posLabel(G.player.pos);const pfName=G.playerFaction?.name;const phase=getPhase(G.month);
     const joinedNpc=!G.playerFaction&&G.player.factionId?G.factions.find(f=>f.id===G.player.factionId):null;
     const isRace=G.speakerRace?.active;const isInterim=phase==='Interim';
-    const canFR=isInterim&&!G.fundraisedThisTurn;
+    const monthCap=maxFundraisersThisMonth();const interimCap=maxFundraisersThisInterim();
+    const monthUsed=G.fundraisersThisTurn||0;const interimUsed=G.fundraisersThisInterim||0;
+    const canFR=isInterim&&monthUsed<monthCap&&interimUsed<interimCap;
     const canSeekLeader=G.month===12&&(G.playerFaction?.members.length||0)>=8&&!LEADERSHIP.some(l=>l.id===G.player.pos);
     const canEndorse=G.month===11&&G.year>=2028&&G.year%2===0;
     sc.innerHTML=`
@@ -4066,7 +4124,7 @@ function renderSidebar(){
         </div>
         ${isRace&&G.speakerRace.declared?`<div class="sec-hdr">Speaker Race</div><div style="font-size:12px;margin-bottom:8px">Pledged: <strong>${getPledgeCount().mine} / 26</strong> — use Secure/Flip Pledge on undecided members.</div>`:''}
         <div class="sec-hdr">Fundraising</div>
-        <button class="gact" onclick="doFundraise()" ${!canFR?'disabled':''}><span>Hold Fundraiser${!isInterim?` <span style="font-size:9px;opacity:.6">(Interim only)</span>`:''}${isInterim&&G.fundraisedThisTurn?` <span style="font-size:9px;opacity:.6">(done this month)</span>`:''}</span><span class="ac" style="background:var(--ally);color:white">Warchest</span></button>
+        <button class="gact" onclick="doFundraise()" ${!canFR?'disabled':''}><span>Hold Fundraiser${!isInterim?` <span style="font-size:9px;opacity:.6">(Interim only)</span>`:` <span style="font-size:9px;opacity:.6">(${interimUsed}/${interimCap} this interim${monthUsed>=monthCap?' · month limit':''})</span>`}</span><span class="ac" style="background:var(--ally);color:white">Warchest</span></button>
         <div class="sec-hdr">District Actions${phase!=='Session'?` <span style="font-size:9px;opacity:.5">(Session only)</span>`:''}</div>
         <button class="gact" onclick="doDistrictLeg()" ${phase!=='Session'||G.pushedLegThisTurn||G.player.capital<1?'disabled':''}><span>Push District Legislation${G.pushedLegThisTurn?' <span style="font-size:9px;opacity:.6">(done)</span>':''}</span><span class="ac" style="background:var(--friendly);color:white">1 CP</span></button>
         <button class="gact" onclick="doTownHall()" ${phase!=='Session'||G.townHallThisTurn||G.player.capital<1?'disabled':''}><span>Host Solo Town Hall${G.townHallThisTurn?' <span style="font-size:9px;opacity:.6">(done)</span>':''}</span><span class="ac" style="background:var(--friendly);color:white">1 CP</span></button>
