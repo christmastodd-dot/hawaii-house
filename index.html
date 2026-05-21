@@ -124,7 +124,7 @@ body{
 .seat::after{content:'';position:absolute;inset:0;border-radius:4px;background:linear-gradient(135deg,rgba(255,255,255,.14) 0%,transparent 55%);pointer-events:none;}
 .seat:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.55);z-index:10;}
 .seat .gos-badge{position:absolute;top:-4px;right:-4px;width:13px;height:13px;border-radius:50%;background:#e8b84b;color:#1a1a1f;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--bg);z-index:3;pointer-events:none;line-height:1;letter-spacing:0;font-family:'Inconsolata',monospace;box-shadow:0 0 0 1px rgba(0,0,0,.4);}
-.seat .pty{position:absolute;bottom:1px;left:1px;font-size:9px;font-weight:900;line-height:1;padding:1px 3px;border-radius:2px;color:#fff;letter-spacing:.04em;pointer-events:none;z-index:2;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
+.seat .pty{position:absolute;bottom:0;left:0;right:0;font-size:9px;font-weight:900;line-height:1;padding:2px 0;border-radius:0 0 3px 3px;color:#fff;letter-spacing:.04em;pointer-events:none;z-index:2;text-align:center;}
 .seat .pty.d{background:#4a85d4;}
 .seat .pty.r{background:#c84a3d;}
 .seat .vac-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2;line-height:1;opacity:.3;}
