@@ -827,6 +827,7 @@ let G={
   gameOver:false,gameWon:false,
   careerStats:{turns:0,capitalSpent:0,peakFaction:0,speakerAttempts:0},
   gossipLog:[],
+  factionAffinityMod:{}, // {fA_id: {fB_id: int}} symmetric modifier on inter-faction warmth
 };
 
 // ===== UTILS =====
@@ -919,6 +920,54 @@ function factionPopularity(memberReps){
   const allies=real.filter(r=>r.disposition>=80).length;
   const friendly=real.filter(r=>r.disposition>=60&&r.disposition<80).length;
   return{avg,allies,friendly,n:real.length};
+}
+// Mutual warmth between two factions. 'player' refers to the player's own caucus.
+// Base = average disposition of one faction's members toward the other; for NPC↔NPC
+// pairs we use inter-member relationships. A separate G.factionAffinityMod stores
+// explicit nudges from events like joint pau hanas.
+function factionPairAffinity(idA,idB){
+  if(!idA||!idB||idA===idB)return null;
+  const modAB=G.factionAffinityMod?.[idA]?.[idB]||0;
+  const modBA=G.factionAffinityMod?.[idB]?.[idA]||0;
+  const mod=(modAB+modBA)/2;
+  let base=null;
+  if(idA==='player'||idB==='player'){
+    const npcId=idA==='player'?idB:idA;
+    if(!G.playerFaction)return null;
+    const npcFac=G.factions.find(f=>f.id===npcId);if(!npcFac)return null;
+    // Use NPC members' disposition toward player (proxy for warmth)
+    const vals=npcFac.members.map(id=>G.reps.find(r=>r.id===id)?.disposition).filter(v=>typeof v==='number');
+    if(vals.length)base=vals.reduce((s,v)=>s+v,0)/vals.length;
+  } else {
+    const fA=G.factions.find(f=>f.id===idA);const fB=G.factions.find(f=>f.id===idB);
+    if(!fA||!fB)return null;
+    let sum=0,n=0;
+    fA.members.forEach(idA2=>{
+      const rA=G.reps.find(rr=>rr.id===idA2);if(!rA||!rA.relationships)return;
+      fB.members.forEach(idB2=>{
+        const v=rA.relationships[idB2];
+        if(typeof v==='number'){sum+=v;n++;}
+      });
+    });
+    if(n)base=sum/n;
+  }
+  if(base===null)return null;
+  return Math.max(0,Math.min(100,base+mod));
+}
+function factionAffinityLabel(v){
+  if(v>=75)return'warm allies';
+  if(v>=60)return'friendly';
+  if(v>=45)return'cordial';
+  if(v>=30)return'cool';
+  return'frosty';
+}
+function bumpFactionAffinity(idA,idB,amount){
+  if(!idA||!idB||idA===idB)return;
+  G.factionAffinityMod=G.factionAffinityMod||{};
+  G.factionAffinityMod[idA]=G.factionAffinityMod[idA]||{};
+  G.factionAffinityMod[idB]=G.factionAffinityMod[idB]||{};
+  G.factionAffinityMod[idA][idB]=(G.factionAffinityMod[idA][idB]||0)+amount;
+  G.factionAffinityMod[idB][idA]=(G.factionAffinityMod[idB][idA]||0)+amount;
 }
 // ===== INTER-MEMBER RELATIONSHIPS =====
 function relValue(a,b){if(!a||!b||!a.relationships)return null;return a.relationships[b.id]??null;}
@@ -1304,6 +1353,58 @@ const ACTIONS=[
      }
      showJoinOutcome({success,rep,faction:f,chancePct:Math.round(chance*100),xferred,effects});
    }},
+  {id:'propose-merger',label:'Propose Faction Merger',cost:3,needsIntro:true,hideAfterIntro:false,phase:'any',requiresFactionLeader:true,desc:'Combine your caucus with theirs. The larger faction takes the lead and keeps its name.',
+   do(rep){
+     if(!G.playerFaction){addEvent('You need your own faction first.');return false;}
+     const targetF=G.factions.find(f=>f.leaderId===rep.id);
+     if(!targetF){addEvent('Rep. '+rep.last+' does not lead a faction.');return false;}
+     if(targetF.party!==G.player.party){addEvent(`The ${targetF.name} is a ${targetF.party==='D'?'Democratic':'Republican'} faction — mergers must stay within a party.`);return false;}
+     const mySize=G.playerFaction.members.length+1; // include player
+     const theirSize=targetF.members.length;
+     const fa=factionPairAffinity('player',targetF.id);
+     const faMod=fa==null?0:(fa-50)/220; // ±0.23
+     let chance=.18+affinity(G.player,rep)*.42+(rep.disposition-40)/180+faMod;
+     // Hard ask if you're much smaller than them
+     const sizeRatio=mySize/Math.max(1,theirSize);
+     if(sizeRatio<.5)chance-=0.12;
+     else if(sizeRatio<.8)chance-=0.05;
+     chance=Math.min(.88,Math.max(.05,chance));
+     const success=Math.random()<chance;
+     if(success){
+       const playerLeads=mySize>=theirSize;
+       const winningName=playerLeads?G.playerFaction.name:targetF.name;
+       const losingName=playerLeads?targetF.name:G.playerFaction.name;
+       if(playerLeads){
+         // Absorb their members into your faction
+         targetF.members.forEach(id=>{
+           const r=G.reps.find(rr=>rr.id===id);
+           if(r){r.factionId='player';if(!G.playerFaction.members.includes(r.id))G.playerFaction.members.push(r.id);r.joinedFactionTurn=G.careerStats.turns;}
+         });
+         // Remove the absorbed faction from G.factions
+         G.factions=G.factions.filter(f=>f.id!==targetF.id);
+         rep.log.push({m:G.month,y:G.year,text:`Merged the ${targetF.name} into the ${winningName}.`});
+         addEvent(`🤝 The ${losingName} merged into the ${winningName}. You lead the combined caucus (${G.playerFaction.members.length+1} members).`);
+       } else {
+         // Your faction merges into theirs; you become a member
+         const oldName=G.playerFaction.name;
+         G.playerFaction.members.forEach(id=>{
+           const r=G.reps.find(rr=>rr.id===id);
+           if(r){r.factionId=targetF.id;if(!targetF.members.includes(r.id))targetF.members.push(r.id);r.joinedFactionTurn=G.careerStats.turns;}
+         });
+         G.playerFaction=null;
+         G.player.factionId=targetF.id;
+         rep.log.push({m:G.month,y:G.year,text:`Merged the ${oldName} into the ${winningName} under their leadership.`});
+         addEvent(`🤝 The ${oldName} merged into the ${winningName}. Rep. ${rep.last} leads the combined caucus.`);
+       }
+       // Soft disposition bump for all members of the combined caucus — but no untrustworthy hit
+       // since this was a mutual merger, not jumping ship.
+       const combinedId=playerLeads?'player':targetF.id;
+       G.reps.filter(r=>r.factionId===combinedId).forEach(r=>{r.disposition=Math.min(100,r.disposition+8);});
+     }else{
+       addEvent(`Rep. ${rep.last} declined the merger — the ${targetF.name} prefers to stay independent for now.`);
+     }
+     showMergerOutcome({success,rep,targetF,chancePct:Math.round(chance*100),mySize,theirSize,faOriginal:fa});
+   }},
   {id:'lobby-committee',label:'Lobby for Committee Seat',cost:3,needsIntro:true,hideAfterIntro:false,phase:'dec',requiresChair:true,desc:'Ask this chair to appoint you Vice Chair.',
    do(rep){if(!rep.pos||!rep.pos.startsWith('chair-')){addEvent('Target a committee chair.');return false;}if(G.player.pos){addEvent('You already hold a position.');return false;}const ci=parseInt(rep.pos.split('-')[1]);const chance=Math.min(.8,.25+affinity(G.player,rep)*.5+(rep.disposition-35)/150);if(Math.random()<chance){const ov=G.reps.find(r=>r.pos===`vc-${ci}`);if(ov)ov.pos=null;G.player.pos=`vc-${ci}`;G.player.capital=calcCapital(G.player);rep.log.push({m:G.month,y:G.year,text:`Appointed you Vice Chair of ${COMMITTEES[ci]}.`});addEvent(`Rep. ${rep.last} appointed you Vice Chair of ${COMMITTEES[ci]}. +1 capital/month.`);}else{addEvent(`Rep. ${rep.last} was appreciative but couldn't offer the seat right now.`);}}},
   // M3 ACTIONS
@@ -1475,6 +1576,7 @@ function availableActions(rep){
     if(a.id==='recruit'&&isInPlayerFaction(rep.id))return false;
     if(a.id==='join-caucus'&&isInPlayerFaction(rep.id))return false;
     if(a.id==='join-caucus'&&G.player.factionId&&G.factions.find(f=>f.leaderId===rep.id)?.id===G.player.factionId)return false;
+    if(a.id==='propose-merger'&&!G.playerFaction)return false;
     if(a.id==='donate'&&G.donatedTo.includes(rep.id))return false;
     if(a.undermine&&isInPlayerFaction(rep.id))return false;
     return true;
@@ -1608,7 +1710,22 @@ function hostPauHana(){
   const sorted=[...G.reps].sort((a,b)=>b.disposition-a.disposition);
   const partyBg=p=>p==='D'?'#2c5fa0':'#a03020';
   const phMax=calcCapital(G.player);
+  // Faction-leader option: invite an entire same-party faction at once (3 CP)
+  const isLeader=!!G.playerFaction;
+  const sameParty=isLeader?G.factions.filter(f=>f.party===G.player.party):[];
+  const factionInviteHTML=isLeader&&sameParty.length?`
+    <div style="margin-bottom:12px;padding:8px 10px;border:1px solid var(--border2);border-radius:4px;background:rgba(232,184,75,.05)">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em">Faction Leader: Invite a Whole Caucus</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5">Joint pau hana with another caucus. Costs <strong>3 CP</strong> and boosts faction affinity with the chosen caucus on top of individual disposition gains.</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${sameParty.map(f=>{
+          const fa=factionPairAffinity('player',f.id);const faLbl=fa==null?'—':`${Math.round(fa)} ${factionAffinityLabel(fa)}`;
+          return `<button class="gact ph-fac-btn" data-fid="${f.id}" style="justify-content:space-between"><span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${f.color};margin-right:6px;vertical-align:middle"></span>${f.name} (${f.members.length}m)</span><span style="font-size:10px;opacity:.8">aff ${faLbl} · 3 CP</span></button>`;
+        }).join('')}
+      </div>
+    </div>`:'';
   showModal('🌺 Host Pau Hana',`Choose up to ${phMax} colleagues to invite for an after-work gathering`,()=>`
+    ${factionInviteHTML}
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">
       Allies and friendly members are more likely to show up. Those who attend will feel closer to you.
       Select up to <strong style="color:var(--accent)">${phMax} guests</strong> — cost is <strong style="color:var(--accent)">2 CP</strong> regardless of attendance.
@@ -1626,6 +1743,14 @@ function hostPauHana(){
     </div>
     <div id="ph-warn" style="display:none;color:#e74c3c;font-size:11px;text-align:center;margin-top:6px">Select at least 1 and no more than ${phMax} guests.</div>
   `);
+  // Wire faction-invite buttons
+  document.querySelectorAll('.ph-fac-btn').forEach(btn=>{
+    btn.onclick=()=>{
+      const fid=btn.dataset.fid;
+      if(G.player.capital<3){addEvent('Not enough capital for a joint pau hana (need 3 CP).');return;}
+      closeModal();hostFactionPauHana(fid);
+    };
+  });
   document.getElementById('mok').textContent='Host Pau Hana →';
   document.getElementById('mok').onclick=()=>{
     const checked=[...document.querySelectorAll('.ph-cb:checked')];
@@ -1633,6 +1758,38 @@ function hostPauHana(){
     closeModal();
     resolvePauHana(checked.map(cb=>parseInt(cb.dataset.id)));
   };
+}
+function hostFactionPauHana(factionId){
+  if(G.gameOver||G.gameWon)return;
+  if(G.player.capital<3){addEvent('Not enough capital for a joint pau hana (need 3 CP).');return;}
+  if(G.pauHanaThisTurn){addEvent('You\'ve already hosted a pau hana this month.');return;}
+  const f=G.factions.find(ff=>ff.id===factionId);if(!f){addEvent('Faction not found.');return;}
+  G.player.capital-=3;G.careerStats.capitalSpent+=3;
+  G.pauHanaThisTurn=true;
+  const attended=[];const declined=[];
+  // Faction events have stronger pull — leaders + members tend to show up
+  f.members.forEach(id=>{
+    const rep=G.reps.find(r=>r.id===id);if(!rep)return;
+    const chance=Math.min(0.95,0.32+(rep.disposition/100)*0.62);
+    if(Math.random()<chance){
+      const boost=rng(5,10);
+      rep.disposition=Math.min(100,rep.disposition+boost);
+      rep.log.push({m:G.month,y:G.year,text:`Attended a joint pau hana with your caucus — relationship warmed (+${boost}).`});
+      attended.push({rep,boost});
+    } else {
+      declined.push(rep);
+    }
+  });
+  // Faction-affinity bump: scaled by attendance ratio
+  const ratio=f.members.length?attended.length/f.members.length:0;
+  const faBump=Math.round(4+ratio*10); // 4-14 boost
+  bumpFactionAffinity('player',f.id,faBump);
+  if(attended.length){
+    addEvent(`🌺 Joint pau hana with the ${f.name}: ${attended.length}/${f.members.length} attended. Faction affinity +${faBump}.`);
+  } else {
+    addEvent(`🌺 Joint pau hana with the ${f.name}: nobody showed up. Faction affinity +${faBump} for the gesture.`);
+  }
+  checkMilestones();render();
 }
 // Live counter so player sees selection count update in real time
 function phCountUpdate(){
@@ -1823,6 +1980,23 @@ function showJoinOutcome({success,rep,faction,chancePct,xferred,effects}){
       ${success?`<div class="mev" style="margin-top:10px"><em>You may still form a new faction or run for Speaker later.</em></div>`:`<div class="mev" style="margin-top:10px;opacity:.75">Build the relationship further — a higher disposition with Rep. ${rep.last} will improve your odds.</div>`}
     </div>
     ${effectsHtml}
+  `);
+}
+
+function showMergerOutcome({success,rep,targetF,chancePct,mySize,theirSize,faOriginal}){
+  const title=success?'🤝 Faction Merger':'Merger Declined';
+  const sub=success?(mySize>=theirSize?`Combined caucus under your leadership`:`Combined caucus under Rep. ${rep.last}`):`${targetF.name} stays independent`;
+  const faTxt=faOriginal==null?'no read yet':`${Math.round(faOriginal)} (${factionAffinityLabel(faOriginal)})`;
+  showModal(title,sub,()=>`
+    <div class="msec">
+      <div class="mev" style="font-size:13px;line-height:1.7">
+        ${success
+          ?`Rep. <strong>${rep.last}</strong> agreed to combine the <strong>${targetF.name}</strong> with your caucus. The larger faction took the lead.`
+          :`Rep. <strong>${rep.last}</strong> declined your proposal to merge the <strong>${targetF.name}</strong> with your caucus.`}
+      </div>
+      <div class="mev" style="opacity:.75">Acceptance chance was about <strong>${chancePct}%</strong>. Size: you ${mySize} vs. them ${theirSize}. Faction affinity before merger: ${faTxt}.</div>
+      ${success?`<div class="mev" style="margin-top:8px"><span style="color:var(--ally)">+8</span> disposition across the combined caucus.</div>`:`<div class="mev" style="margin-top:10px;opacity:.75">Build personal rapport with Rep. ${rep.last} and warm relations between the caucuses — hosting them at a Pau Hana boosts faction affinity.</div>`}
+    </div>
   `);
 }
 
@@ -3303,6 +3477,15 @@ function renderChamber(){
             const pct=Math.round(jc*100);
             const jColor=pct>=60?'var(--ally)':pct>=40?'var(--friendly)':pct>=25?'var(--neutral)':'var(--cool)';
             html+=`<span>Join chance: <span class="pill" style="background:${jColor}">${pct}%</span></span>`;
+          }
+          // Faction-to-faction affinity when player has own caucus
+          if(G.playerFaction&&g.faction.party===G.player.party){
+            const fa=factionPairAffinity('player',g.faction.id);
+            if(fa!=null){
+              const faPct=Math.round(fa);
+              const faColor=faPct>=75?'var(--ally)':faPct>=60?'var(--friendly)':faPct>=45?'var(--neutral)':faPct>=30?'var(--cool)':'var(--hostile)';
+              html+=`<span title="Mutual warmth between caucuses (joint pau hanas raise this)">Faction affinity: <span class="pill" style="background:${faColor}">${faPct} · ${factionAffinityLabel(fa)}</span></span>`;
+            }
           }
         } else if(g.kind==='player'){
           html+=`<span style="opacity:.7">Your caucus</span>`;
