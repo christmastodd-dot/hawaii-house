@@ -1440,14 +1440,27 @@ const ACTIONS=[
      if(!G.speakerRace?.active){addEvent('No active speaker race.');return false;}
      if(!G.speakerRace.declared){G.speakerRace.declared=true;G.careerStats.speakerAttempts++;addEvent('You entered the Speaker race.');setView('pledges');}
      const dealBonus=dealType==='chair'?.30:dealType==='vc'?.18:dealType==='leader'?.22:dealType==='seat'?.12:0;
-     const chance=Math.min(.88,.3+affinity(G.player,rep)*.5+(rep.disposition-35)/150+dealBonus);
+     // If the rep has explicitly demanded a position and you didn't match it, the ask falls flat
+     const ask=rep.pledgeAsk;
+     const askRank={seat:1,vc:2,chair:3,leader:3};
+     const offered=dealType;
+     const askMet=!ask||(offered&&askRank[offered]&&askRank[offered]>=(askRank[ask]||1));
+     let chance=Math.min(.88,.3+affinity(G.player,rep)*.5+(rep.disposition-35)/150+dealBonus);
+     if(!askMet)chance=Math.min(chance,0.12);
      if(Math.random()<chance){
        rep.pledge='player';
        if(dealType&&dealType!=='none'){G.pledgeDeals.push({repId:rep.id,type:dealType,detail:dealDetail,repName:displayLast(rep)});}
        const dealNote=dealType==='chair'?` You promised them the chair of ${dealDetail}.`:dealType==='vc'?` You promised them Vice Chair of ${dealDetail}.`:dealType==='leader'?` You promised them a leadership role.`:dealType==='seat'?` You promised them a committee seat.`:'';
        rep.log.push({m:G.month,y:G.year,text:`Pledged their Speaker vote to you.${dealNote}`});
        addEvent(`Rep. ${displayLast(rep)} pledged their support.${dealNote}`);
-     }else{addEvent(`Rep. ${displayLast(rep)} was non-committal — try improving your relationship first.`);}
+     }else{
+       if(!askMet){
+         const askLbl=ask==='leader'?'a leadership role':ask==='chair'?'a committee chair':ask==='vc'?'a vice-chairmanship':'a committee seat';
+         addEvent(`Rep. ${displayLast(rep)} was direct: without ${askLbl}, they can't commit.`);
+       }else{
+         addEvent(`Rep. ${displayLast(rep)} was non-committal — try improving your relationship first.`);
+       }
+     }
    }},
   {id:'flip-pledge',label:'Flip Their Pledge',cost:3,needsIntro:true,hideAfterIntro:false,phase:'raceActive',requiresRivalPledge:true,desc:"Pull a rival-pledged member to your side.",
    do(rep){if(!G.speakerRace?.active){return false;}const chance=Math.min(.65,.15+affinity(G.player,rep)*.5+(rep.disposition-35)/120);if(Math.random()<chance){const old=G.speakerRace.candidates.find(c=>c.factionId===rep.pledge);if(old)old.pledges=old.pledges.filter(id=>id!==rep.id);rep.pledge='player';rep.log.push({m:G.month,y:G.year,text:'Flipped their pledge to you.'});addEvent(`Rep. ${displayLast(rep)} has switched their pledge to you. A significant pickup.`);}else{rep.disposition=Math.max(0,rep.disposition-3);addEvent(`Rep. ${displayLast(rep)} declined to switch and seems annoyed you asked.`);};}},
@@ -1621,9 +1634,17 @@ function showPledgeDealModal(repId){
   const chairOpts=COMMITTEES.map((c,i)=>{const t=promisedChairs.has(c);return`<option value="${i}"${t?' disabled':''}>${c}${t?' ✗ promised':''}</option>`;}).join('');
   const vcOpts=COMMITTEES.map((c,i)=>{const t=promisedVCs.has(c);return`<option value="${i}"${t?' disabled':''}>${c}${t?' ✗ promised':''}</option>`;}).join('');
   const leaderOpts=LEADERSHIP.filter(l=>l.id!=='speaker').map(l=>{const t=promisedLeaders.has(l.id);return`<option value="${l.id}"${t?' disabled':''}>${l.label}${t?' ✗ promised':''}</option>`;}).join('');
+  // Rep's ask (if any) — they may flatly refuse a straight ask
+  const askLabels={leader:'a leadership role',chair:'a committee chairmanship',vc:'a vice-chairmanship',seat:'a committee seat'};
+  const askHTML=rep.pledgeAsk?`<div class="mev" style="border-left:3px solid var(--accent);padding:6px 10px;background:rgba(232,184,75,.08);font-size:12px;margin-bottom:8px"><strong>Rep. ${displayLast(rep)} wants ${askLabels[rep.pledgeAsk]}.</strong> They won't commit on a straight ask — your offer needs to meet or exceed this.</div>`:'';
+  // Rival offers — what other candidates have promised this rep
+  const rivalOffers=(G.speakerRace?.candidates||[]).flatMap(c=>(c.deals||[]).filter(d=>d.repId===rep.id).map(d=>({...d,cand:c})));
+  const rivalsHTML=rivalOffers.length?`<div class="mev" style="border-left:3px solid var(--hostile);padding:6px 10px;background:rgba(168,46,26,.08);font-size:12px;margin-bottom:8px"><strong>Rival offers on the table:</strong><ul style="margin:4px 0 0 16px;padding:0;font-size:11px">${rivalOffers.map(o=>{const t=o.type==='chair'?`Chair${o.detail?' of '+o.detail:''}`:o.type==='vc'?`Vice Chair${o.detail?' of '+o.detail:''}`:o.type==='leader'?(LEADERSHIP.find(l=>l.id===o.detail)?.label||'leadership role'):'committee seat';return`<li>${o.cand.leaderName}: <em>${t}</em></li>`;}).join('')}</ul></div>`:'';
   showModal(`Secure Pledge — Rep. ${displayLast(rep)}`,`Choose how to approach them`,()=>`
     <div class="msec">
       <h3>Your Ask</h3>
+      ${askHTML}
+      ${rivalsHTML}
       <div class="mev" style="margin-bottom:8px">Select what, if anything, you offer in exchange for their pledge. Larger commitments increase your odds but create obligations you must honor if elected Speaker. Positions marked <em style="color:var(--hostile)">✗ promised</em> are already spoken for.</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="deal" value="none" checked> <div><strong>Straight ask</strong> — no commitment <span style="font-size:10px;color:var(--muted)">(base odds)</span></div></label>
@@ -2130,7 +2151,7 @@ function initSpeakerRace(){
   for(const f of G.factions){
     if(f.members.length>=8){
       const leader=G.reps.find(r=>r.id===f.leaderId);
-      if(leader)candidates.push({factionId:f.id,leaderName:`Rep. ${displayLast(leader)}`,pledges:[...f.members],dealWithPlayer:null});
+      if(leader)candidates.push({factionId:f.id,leaderName:`Rep. ${displayLast(leader)}`,pledges:[...f.members],dealWithPlayer:null,deals:[]});
     }
   }
   G.reps.forEach(r=>r.pledge=null);
@@ -2139,7 +2160,18 @@ function initSpeakerRace(){
   const PLEDGE_PAL=['#c0392b','#27ae60','#8e44ad','#e67e22','#16a085','#d35400','#c0922b'];
   candidates.forEach((c,i)=>{c.pledgeColor=PLEDGE_PAL[i%PLEDGE_PAL.length];});
   candidates.forEach(c=>c.pledges.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r)r.pledge=c.factionId;}));
-  G.speakerRace={active:true,declared:false,candidates,playerAcceptedOffer:null};
+  // Some members demand a position to commit — more likely for senior and current title-holders
+  G.reps.forEach(r=>{
+    if(!r||r.pledge)return; // members already in a candidate's bloc don't get asks (they follow leader)
+    const roll=Math.random();
+    if(r.pos&&r.pos.startsWith('chair-')&&roll<0.40)r.pledgeAsk='leader';
+    else if(r.pos&&LEADERSHIP.some(l=>l.id===r.pos)&&roll<0.55)r.pledgeAsk='leader';
+    else if(r.pos&&r.pos.startsWith('vc-')&&roll<0.32)r.pledgeAsk='chair';
+    else if(r.seniority>=5&&roll<0.25)r.pledgeAsk='chair';
+    else if(r.seniority>=3&&roll<0.22)r.pledgeAsk='vc';
+    else r.pledgeAsk=null;
+  });
+  G.speakerRace={active:true,declared:false,candidates,playerAcceptedOffer:null,rounds:[]};
   // Award triple capital for the speaker race
   const tripleBonus=calcCapital(G.player)*2;
   G.player.capital+=tripleBonus;
@@ -2242,23 +2274,72 @@ function declareForSpeaker(){
 
 function speakerRaceNPC(){
   if(!G.speakerRace?.active)return;
+  // 1) Bloc negotiation — established factions (5+ members) move as a group when a
+  //    leader strikes a deal with a candidate. Smaller factions still pledge individually.
+  G.factions.forEach(f=>{
+    if(f.members.length<5)return;
+    // Skip the player's joined faction
+    if(G.player.factionId===f.id&&G.speakerRace.declared)return;
+    // Skip if this faction's leader IS a candidate (already pledged to self)
+    if(G.speakerRace.candidates.some(c=>c.factionId===f.id))return;
+    // Already-decided block? Check the leader's pledge
+    const leader=G.reps.find(r=>r.id===f.leaderId);if(!leader)return;
+    if(leader.pledge)return; // bloc already pledged through leader
+    // Once per turn this faction may pick a candidate to back as a bloc
+    if(Math.random()>.30)return;
+    // Score each candidate (and the player if declared) for this faction
+    const choices=[];
+    if(G.speakerRace.declared){
+      choices.push({id:'player',score:affinity(G.player,leader)*40+(leader.disposition-40)*0.4+(f.party===G.player.party?12:-15)+(factionPairAffinity('player',f.id)||50)*0.2});
+    }
+    G.speakerRace.candidates.forEach(c=>{
+      const cLead=G.reps.find(r=>r.id===G.factions.find(ff=>ff.id===c.factionId)?.leaderId);
+      let s=20+(leader.relationships?.[cLead?.id]||50)*0.3+(factionPairAffinity(f.id,c.factionId)||50)*0.2;
+      if(cLead&&cLead.party===leader.party)s+=12;else s-=20;
+      choices.push({id:c.factionId,score:s,c});
+    });
+    if(!choices.length)return;
+    choices.sort((a,b)=>b.score-a.score);
+    const winner=choices[0];if(winner.score<0)return; // bloc holds
+    // Pledge whole faction (with some individual holdouts ~10%)
+    const pledged=[];const holdouts=[];
+    f.members.forEach(id=>{
+      const r=G.reps.find(rr=>rr.id===id);if(!r||r.pledge)return;
+      if(Math.random()<0.92){
+        r.pledge=winner.id;
+        if(winner.c)winner.c.pledges.push(r.id);
+        pledged.push(r);
+      }else{holdouts.push(r);}
+    });
+    if(pledged.length){
+      const target=winner.id==='player'?'you':winner.c.leaderName;
+      addEvent(`📜 The ${f.name} negotiated as a bloc and pledged ${pledged.length} votes to ${target}.${holdouts.length?` ${holdouts.length} held out.`:''}`);
+    }
+  });
+  // 2) Individual candidate maneuvering on remaining undecideds + flips
   for(const cand of G.speakerRace.candidates){
     const undecided=G.reps.filter(r=>!r.pledge);
     const targets=undecided.sort(()=>Math.random()-.5).slice(0,rng(1,3));
-    // Peers who've already pledged to this candidate exert pull on close colleagues
     const candPledged=G.reps.filter(r=>r.pledge===cand.factionId);
     targets.forEach(r=>{
       let p=.38;
-      // Bonus if a close peer is already in this column
       if(candPledged.length){
         const bestTie=candPledged.reduce((max,c)=>Math.max(max,r.relationships?.[c.id]||0),0);
         if(bestTie>=70)p+=.18;
         else if(bestTie>=55)p+=.10;
       }
+      // If this rep wants a position, the candidate may offer one to win them over
+      let offeredDeal=null;
+      if(r.pledgeAsk&&Math.random()<.55){
+        offeredDeal={repId:r.id,type:r.pledgeAsk,detail:r.pledgeAsk==='leader'?(LEADERSHIP[1]?.id||''):''};
+        p+=r.pledgeAsk==='leader'?.22:r.pledgeAsk==='chair'?.28:r.pledgeAsk==='vc'?.16:.10;
+      }
       if(Math.random()<p){
         r.pledge=cand.factionId;cand.pledges.push(r.id);
+        if(offeredDeal){cand.deals=cand.deals||[];cand.deals.push(offeredDeal);}
         const f=G.factions.find(f=>f.id===cand.factionId);
-        addEvent(`Rep. ${displayLast(r)} pledged support to ${cand.leaderName} (${f?.name||'rival'}).`);
+        const dealNote=offeredDeal?` (in exchange for ${offeredDeal.type==='leader'?'a leadership role':offeredDeal.type==='chair'?'a committee chair':offeredDeal.type==='vc'?'a vice-chairmanship':'a committee seat'})`:'';
+        addEvent(`Rep. ${displayLast(r)} pledged support to ${cand.leaderName} (${f?.name||'rival'})${dealNote}.`);
       }
     });
     // Also try to flip weak player pledges — easier if a close peer is on the other side
@@ -2282,30 +2363,75 @@ function speakerRaceNPC(){
 
 function runFloorVote(){
   if(!G.speakerRace)return;
-  if(!G.speakerRace.declared){
-    // Player didn't run — NPC wins
-    const winner=G.speakerRace.candidates.sort((a,b)=>b.pledges.length-a.pledges.length)[0];
-    if(winner){
-      const spk=G.reps.find(r=>r.pos==='speaker');if(spk)spk.pos=null;
-      const f=G.factions.find(f=>f.id===winner.factionId);
-      const leader=G.reps.find(r=>r.id===f?.leaderId);
-      if(leader)leader.pos='speaker';
-      addEvent(`${winner.leaderName} was elected Speaker of the House. You can challenge next cycle.`);
-    }
-    G.speakerRace=null;setView('disposition');render();return;
+  // Build slate: rival candidates + player (if declared)
+  const slate=[];
+  if(G.speakerRace.declared)slate.push({id:'player',label:`Rep. ${displayLast(G.player)}`,isPlayer:true});
+  G.speakerRace.candidates.forEach(c=>{
+    const f=G.factions.find(ff=>ff.id===c.factionId);
+    const leader=G.reps.find(r=>r.id===f?.leaderId);
+    slate.push({id:c.factionId,label:c.leaderName,leader,cand:c,faction:f});
+  });
+  // Each rep picks the candidate they're most aligned with from the active slate
+  function pickCandidateFor(rep,active){
+    // If their existing pledge is still in play, they stick with it
+    if(rep.pledge&&active.find(s=>s.id===rep.pledge))return rep.pledge;
+    let best=null;let bestScore=-Infinity;
+    active.forEach(s=>{
+      let score=0;
+      if(s.isPlayer){
+        score+=affinity(G.player,rep)*40+(rep.disposition-40)*0.5;
+        if(isInPlayerFaction(rep.id))score+=35;
+        if(G.player.factionId===rep.factionId)score+=20;
+      }else if(s.leader){
+        score+=affinity(s.leader,rep)*35+(rep.relationships?.[s.leader.id]||40)*0.45;
+        if(rep.factionId===s.id)score+=35;
+      }
+      score+=Math.random()*4; // small noise
+      if(score>bestScore){bestScore=score;best=s.id;}
+    });
+    return best;
   }
-  const mine=G.reps.filter(r=>r.pledge==='player').length;
-  const npcResults=G.speakerRace.candidates.map(c=>({...c,count:G.reps.filter(r=>r.pledge===c.factionId).length})).sort((a,b)=>b.count-a.count);
-  const top=npcResults[0];
-  const topCount=top?.count||0;
-  // Undecided reps: give to whoever has more pledges at floor vote (they follow the wind)
-  const undecided=G.reps.filter(r=>!r.pledge);
-  let bonusMine=0,bonusRival=0;
-  undecided.forEach(r=>{if(Math.random()<(mine/(mine+topCount+.01))){bonusMine++;}else{bonusRival++;}});
-  const finalMine=mine+bonusMine;const finalRival=topCount+bonusRival;
-  const won=finalMine>finalRival&&finalMine>=26;
+  const MAJORITY=26;
+  const rounds=[];
+  let active=[...slate];
+  let winner=null;
+  let safety=8;
+  while(safety-->0&&active.length){
+    const tally=new Map();active.forEach(s=>tally.set(s.id,0));
+    if(active.find(s=>s.isPlayer))tally.set('player',(tally.get('player')||0)+1); // player votes for self
+    G.reps.forEach(rep=>{
+      const choice=pickCandidateFor(rep,active);
+      if(choice&&tally.has(choice))tally.set(choice,tally.get(choice)+1);
+    });
+    const results=active.map(s=>({slate:s,count:tally.get(s.id)||0})).sort((a,b)=>b.count-a.count);
+    rounds.push(results);
+    if(results[0].count>=MAJORITY){winner=results[0].slate;break;}
+    if(active.length===1){winner=active[0];break;}
+    // Eliminate lowest. If tie at bottom, eliminate the one with fewer faction members
+    const minCount=results[results.length-1].count;
+    const tied=results.filter(r=>r.count===minCount);
+    const drop=tied.sort((a,b)=>(a.slate.faction?.members.length||1)-(b.slate.faction?.members.length||1))[0].slate;
+    active=active.filter(s=>s.id!==drop.id);
+  }
+  // Build a recap card for the modal
+  function renderRounds(){
+    return rounds.map((r,i)=>{
+      const lines=r.map(x=>{
+        const isWin=winner&&x.slate.id===winner.id&&i===rounds.length-1;
+        const color=x.slate.isPlayer?'var(--player)':(x.slate.faction?.color||x.slate.cand?.pledgeColor||'#888');
+        return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:2px 0">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color}"></span>
+          <span style="flex:1;${isWin?'font-weight:700;color:var(--ally)':''}">${x.slate.label}${isWin?' ★ WINS':''}</span>
+          <span style="font-family:monospace;font-weight:700">${x.count}</span>
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Round ${i+1}${i>0?' (runoff)':''} — majority needed: ${MAJORITY}</div>${lines}</div>`;
+    }).join('');
+  }
+  // Apply outcome
+  const playerWon=winner&&winner.isPlayer;
   G.speakerRace=null;G.reps.forEach(r=>r.pledge=null);setView('disposition');
-  if(won){
+  if(playerWon){
     G.gameWon=true;G.player.pos='speaker';
     // Honor pledge deals
     const dealNotes=[];
@@ -2317,18 +2443,29 @@ function runFloorVote(){
       else if(d.type==='seat'){r.disposition=Math.min(maxDisposition(r),r.disposition+8);dealNotes.push(`Rep. ${d.repName} → committee appointment promised`);}
     });
     G.pledgeDeals=[];
-    addEvent(`FLOOR VOTE: You were elected Speaker of the Hawaii House with ${finalMine} votes.`);
-    setTimeout(()=>showSpeakerWinAssign(finalMine,top,dealNotes),400);
+    const finalRound=rounds[rounds.length-1];
+    const mine=finalRound.find(x=>x.slate.isPlayer)?.count||0;
+    addEvent(`FLOOR VOTE: You were elected Speaker of the Hawaii House with ${mine} votes${rounds.length>1?` after ${rounds.length} rounds`:''}.`);
+    setTimeout(()=>{
+      showModal('★ Elected Speaker',`You won the Speaker election${rounds.length>1?` after ${rounds.length} rounds`:''}`,()=>`
+        <div class="msec"><h3>Floor Vote Results</h3>${renderRounds()}</div>
+        ${dealNotes.length?`<div class="msec"><h3>Promises Honored</h3>${dealNotes.map(n=>`<div class="mev">• ${n}</div>`).join('')}</div>`:''}
+      `);
+      setTimeout(()=>showSpeakerWinAssign(rounds[rounds.length-1].find(x=>x.slate.isPlayer)?.count||0,null,dealNotes),100);
+    },300);
   } else {
+    // NPC winner: install them as Speaker
     const spk=G.reps.find(r=>r.pos==='speaker');if(spk)spk.pos=null;
-    const f=G.factions.find(f=>f.id===top?.factionId);const leader=G.reps.find(r=>r.id===f?.leaderId);if(leader)leader.pos='speaker';
-    addEvent(`FLOOR VOTE: ${top?.leaderName||'A rival'} won with ${finalRival} votes. You had ${finalMine}. Try again next cycle.`);
-    showModal('Speaker Election — Lost',`${top?.leaderName||'Rival'} won with ${finalRival} votes (you: ${finalMine})`,()=>`
-      <div class="msec"><h3>Result</h3>
-        <div class="mev">${finalMine<26?`You were ${26-finalMine} vote${26-finalMine>1?'s':''} short of a majority.`:''}</div>
-        <div class="mev">Your faction remains intact. Grow your coalition and declare again in ${G.year+2}.</div>
-        <div class="mev">The Speaker race comes around every election cycle — keep building.</div>
-      </div>`);
+    if(winner&&winner.leader)winner.leader.pos='speaker';
+    const finalRound=rounds[rounds.length-1];
+    const playerLine=G.speakerRace?.declared===false?'':finalRound.find(x=>x.slate.isPlayer);
+    const winCount=finalRound.find(x=>x.slate.id===winner?.id)?.count||0;
+    addEvent(`FLOOR VOTE: ${winner?.label||'A rival'} won with ${winCount} votes${rounds.length>1?` after ${rounds.length} rounds`:''}.`);
+    showModal('Speaker Election — Lost',`${winner?.label||'Rival'} elected Speaker${rounds.length>1?` after ${rounds.length} rounds`:''}`,()=>`
+      <div class="msec"><h3>Floor Vote Results</h3>${renderRounds()}</div>
+      <div class="msec"><div class="mev">${rounds.length>1?'No candidate reached a majority in the first round, so the lowest-ranked candidates were eliminated and the chamber re-voted.':''}</div>
+        <div class="mev">Your faction remains intact. Grow your coalition and declare again in ${G.year+2}.</div></div>
+    `);
   }
   render();
 }
@@ -4165,6 +4302,8 @@ function renderSidebar(){
     ${isCandidate?`<div class="pledge-badge" style="background:#7a5c00;margin-bottom:4px">★ Speaker Candidate</div>`:''}
     ${pl?`<div class="ptag">${pl}</div>`:''}${facName?`<span class="ftag" style="background:${getFactionColor(rep)}">${facName}${inPF?' ★':''}</span>`:''}
     ${pledgeLabel?`<div class="pledge-badge" style="background:${pledgeColor}">${pledgeLabel}</div>`:''}
+    ${G.speakerRace?.active&&rep.pledgeAsk&&!rep.pledge?`<div class="pledge-badge" style="background:rgba(232,184,75,.18);color:#e8b84b;border:1px solid rgba(232,184,75,.45);font-weight:600">Wants: ${rep.pledgeAsk==='leader'?'a leadership role':rep.pledgeAsk==='chair'?'a committee chair':rep.pledgeAsk==='vc'?'a vice-chairmanship':'a committee seat'}</div>`:''}
+    ${G.speakerRace?.active&&(()=>{const offers=(G.speakerRace.candidates||[]).flatMap(c=>(c.deals||[]).filter(d=>d.repId===rep.id).map(d=>({...d,c})));return offers.length?`<div class="pledge-badge" style="background:rgba(168,46,26,.15);color:#e08a72;border:1px solid rgba(168,46,26,.4);font-weight:600">Rival offer: ${offers[0].c.leaderName} promised ${offers[0].type==='leader'?'leadership':offers[0].type==='chair'?'a chair':offers[0].type==='vc'?'a vice-chair':'a seat'}</div>`:'';})()}
     ${rep.loyal?`<div style="font-size:10px;color:var(--ally);margin-bottom:6px">● Loyal faction member</div>`:''}
     ${hasRecentGossip(rep.id)?`<div onclick="toggleGossipPanel()" style="font-size:10px;color:#e8b84b;margin-bottom:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px solid rgba(232,184,75,.4);border-radius:3px;background:rgba(232,184,75,.08);" title="Click to open Gossip log">! In the rumor mill recently</div>`:''}
     <div class="sgrid" style="margin-top:10px">
