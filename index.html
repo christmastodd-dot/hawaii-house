@@ -3963,6 +3963,7 @@ function renderChamber(){
       block.appendChild(seats);el.appendChild(block);
     });
   } else if(G.viewMode==='ideology'){
+    applyChamberScroll(el);
     el.className='ideo-mode';
     const IBANDS=[
       {label:'Progressive',range:[1,15],color:'#3d6b9e'},
@@ -3980,12 +3981,14 @@ function renderChamber(){
       const lbl=document.createElement('div');lbl.className='fc-label';
       lbl.innerHTML=`<div class="fc-label-bar" style="background:${band.color}"></div><span style="color:${band.color}">${band.label}</span><span style="opacity:.4;font-weight:400;margin-left:2px">(${mems.length})</span>`;
       const seats=document.createElement('div');seats.className='fc-seats';
+      const rwrap=document.createElement('div');rwrap.className='fc-rest';
       mems.forEach(m=>{
         const s=makeSeat(m,'ideology');
         s.style.background=band.color;
         if(m.isPlayer)s.style.outline='2px solid #ffd700';
-        seats.appendChild(s);
+        rwrap.appendChild(s);
       });
+      seats.appendChild(rwrap);
       block.appendChild(lbl);block.appendChild(seats);el.appendChild(block);
     });
   } else if(G.viewMode==='seniority'){
