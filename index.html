@@ -437,8 +437,7 @@ body{
   #chamber{width:100%;}
   #sidebar{width:100%;flex-shrink:0;border-left:none;border-top:2px solid var(--border2);overflow:visible;}
   #sbc{flex:none;overflow-y:visible;max-height:none;}
-  #act-panel{position:sticky;bottom:0;background:var(--surface);z-index:5;}
-  #feed-wrap{position:relative;}
+  #act-panel{position:static;background:var(--surface);}
 }
 /* Part 4 — dropdown panels become full-width sheets; modal goes full-width */
 @media (max-width:760px){
@@ -454,17 +453,33 @@ body{
   .msub{font-size:11px;margin-bottom:12px;}
   #mok{padding:13px;font-size:14px;} /* bigger tap target for the primary CTA */
 }
+/* Mobile disposition list (tiered member cards) */
+#chamber.mlist-mode{display:flex;flex-direction:column;gap:12px;align-items:stretch;}
+.ml-block{display:flex;flex-direction:column;gap:5px;}
+.ml-thdr{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;background:var(--surface2);border-left:3px solid currentColor;border-radius:0 3px 3px 0;}
+.ml-count{font-size:11px;opacity:.7;font-family:'Inconsolata',monospace;color:var(--muted);}
+.ml-row{display:flex;align-items:center;gap:10px;padding:11px 10px;background:var(--surface);border:1px solid var(--border);border-radius:5px;cursor:pointer;}
+.ml-row.is-player{border-color:var(--player);background:rgba(40,116,166,.1);}
+.ml-row:active{background:var(--surface2);}
+.ml-pty{flex-shrink:0;width:26px;text-align:center;font-size:13px;font-weight:900;color:#fff;border-radius:3px;padding:4px 0;}
+.ml-main{flex:1;min-width:0;}
+.ml-name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ml-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.ml-disp{flex-shrink:0;font-size:11px;font-weight:700;text-align:right;}
+
 /* Part 5 — touch targets, seat sizing, and final polish */
 @media (max-width:760px){
-  /* Shrink seats so the widest row (10) fits a phone without clipping */
-  .seat{width:30px;height:30px;font-size:7px;border-radius:3px;}
-  .seat .seat-init{font-size:6px;margin-bottom:0;}
-  .seat .pty{font-size:7px;padding:1px 0;}
-  .seat .gos-badge{width:11px;height:11px;font-size:8px;}
-  #chamber{gap:3px;}
-  .crow{gap:3px;}
-  .fc-sep{margin:0 7px;min-height:30px;}
-  .fc-bubble{width:26px;height:26px;font-size:7px;}
+  /* Member-card placards are ~2x larger on phones so full names read clearly.
+     (The disposition view is a list on mobile, so the wide 10-seat row no longer
+     constrains seat size — only the wrapping cluster views use these.) */
+  .seat{width:54px;height:54px;font-size:10px;border-radius:5px;}
+  .seat .seat-init{font-size:8px;margin-bottom:1px;}
+  .seat .pty{font-size:9px;padding:1px 0;}
+  .seat .gos-badge{width:14px;height:14px;font-size:9px;}
+  #chamber{gap:5px;}
+  .crow{gap:5px;}
+  .fc-sep{margin:0 8px;min-height:54px;}
+  .fc-bubble{width:40px;height:40px;font-size:11px;}
   /* chamber header + view toggle: wrap and grow tap targets */
   .chdr{flex-wrap:wrap;gap:6px;}
   .vtoggle{flex-wrap:wrap;}
@@ -488,9 +503,11 @@ body{
   #hdr .hs .v{font-size:11px;}
   #war-btn,#fac-pt-btn,#endorse-btn,#gossip-btn,#pau-hana-btn,#music-btn{font-size:10px;padding:6px 8px;}
   #modal{padding:16px 12px;}
-  /* narrowest phones: shrink seats further so 10-wide rows still fit */
-  .seat{width:27px;height:27px;font-size:6.5px;}
-  .seat .seat-init{font-size:5.5px;}
+  /* narrowest phones: ease the big placards down a touch so cluster rows still wrap nicely */
+  .seat{width:48px;height:48px;font-size:9px;}
+  .seat .seat-init{font-size:7px;}
+  .fc-bubble{width:36px;height:36px;font-size:10px;}
+  .ml-name{font-size:14px;}
   #chamber-panel{padding:8px 6px 6px;}
 }
 </style>
@@ -3735,7 +3752,8 @@ function makeSeat(m,viewMode){
   const isCandidate=m.isPlayer?G.speakerRace?.declared:isSpeakerCandidate(m);
   const isSpeakerPos=(m.isPlayer?G.player.pos:m.pos)==='speaker';
   const lname=m.last||'';
-  const truncated=lname.length>7?lname.slice(0,6)+'·':lname;
+  const maxChars=isMobile()?9:7; // bigger placards on mobile fit longer names
+  const truncated=lname.length>maxChars?lname.slice(0,maxChars-1)+'·':lname;
   const collision=hasLastNameCollision(m);
   const init=collision?(m.first||'').charAt(0).toUpperCase():'';
   const starHTML=isSpeakerPos?' <span style="color:#ffd700">★</span>':(isCandidate?' <span style="color:#e8b84b">★</span>':'');
@@ -3784,8 +3802,72 @@ function applyChamberScroll(el){
   if(isMobile()){el.style.flex='none';el.style.minHeight='';el.style.overflowY='visible';}
   else{el.style.flex='1 1 0';el.style.minHeight='0';el.style.overflowY='auto';}
 }
+// Mobile-only: render the disposition view as a tiered list of member cards
+function buildMlRow(m){
+  const row=document.createElement('div');
+  row.className='ml-row'+(m.isPlayer?' is-player':'');
+  const party=m.isPlayer?G.player.party:m.party;
+  const partyColor=party==='D'?'#4a85d4':'#c84a3d';
+  const pos=m.isPlayer?G.player.pos:m.pos;
+  const pl=posLabel(pos);
+  const dc=m.isPlayer?'var(--player)':dispColor(m.disposition);
+  const dl=m.isPlayer?'You':dispLabel(m.disposition);
+  const fac=m.isPlayer?(G.playerFaction?.name||null):getFactionName(m);
+  const name=m.isPlayer?`${G.player.first} ${G.player.last}`:`${m.first} ${displayLast(m)}`;
+  const star=(pos==='speaker')?' <span style="color:#ffd700">★</span>':(!m.isPlayer&&isSpeakerCandidate(m)?' <span style="color:#e8b84b">★</span>':'');
+  const gos=(!m.isPlayer&&hasRecentGossip(m.id))?' <span style="color:#e8b84b" title="In the rumor mill">!</span>':'';
+  row.innerHTML=`
+    <span class="ml-pty" style="background:${partyColor}">${party}</span>
+    <div class="ml-main">
+      <div class="ml-name">${name}${star}${gos}</div>
+      <div class="ml-sub">${distName(m.district)}${pl?' · '+pl:''}${fac?' · '+fac:''}</div>
+    </div>
+    <span class="ml-disp" style="color:${dc}">${dl}</span>`;
+  if(m.isPlayer)row.onclick=()=>{G.selected=null;renderSidebar();};
+  else row.onclick=()=>selectRep(m.id);
+  return row;
+}
+function renderMobileDispositionList(el){
+  el.className='mlist-mode';
+  el.style.width='';el.style.height='';el.style.position='';
+  el.style.flex='none';el.style.minHeight='';el.style.overflowY='visible';
+  // Player card on top
+  const pblock=document.createElement('div');pblock.className='ml-block';
+  const ph=document.createElement('div');ph.className='ml-thdr';ph.style.color='var(--player)';
+  ph.innerHTML=`<span>You</span>`;pblock.appendChild(ph);
+  pblock.appendChild(buildMlRow({...G.player,isPlayer:true}));
+  el.appendChild(pblock);
+  // Reps grouped by relationship tier
+  const TIERS=[
+    {id:'ally',label:'Allies',color:'var(--ally)'},
+    {id:'friendly',label:'Friendly',color:'var(--friendly)'},
+    {id:'neutral',label:'Neutral',color:'var(--neutral)'},
+    {id:'cool',label:'Cool',color:'var(--cool)'},
+    {id:'hostile',label:'Hostile',color:'var(--hostile)'},
+  ];
+  const groups={};TIERS.forEach(t=>groups[t.id]=[]);
+  G.reps.forEach(r=>{const id=dispId(r.disposition);if(groups[id])groups[id].push(r);});
+  TIERS.forEach(t=>{
+    const mems=groups[t.id];if(!mems.length)return;
+    mems.sort((a,b)=>b.disposition-a.disposition||(a.last||'').localeCompare(b.last||''));
+    const block=document.createElement('div');block.className='ml-block';
+    const hdr=document.createElement('div');hdr.className='ml-thdr';hdr.style.color=t.color;
+    hdr.innerHTML=`<span>${t.label}</span><span class="ml-count">${mems.length}</span>`;
+    block.appendChild(hdr);
+    mems.forEach(m=>block.appendChild(buildMlRow(m)));
+    el.appendChild(block);
+  });
+}
 function renderChamber(){
   const el=document.getElementById('chamber');el.innerHTML='';
+  // Clean slate every render so leftover inline geometry (e.g. arc-mode's fixed
+  // width/height) can't clip or overlap the next view, especially on mobile.
+  el.style.width='';el.style.height='';el.style.position='';
+  el.style.flex='';el.style.minHeight='';el.style.overflowY='';
+  if(isMobile()&&G.viewMode==='disposition'){
+    renderMobileDispositionList(el);
+    return;
+  }
   if(G.viewMode==='faction'){
     applyChamberScroll(el);
     el.className='faction-mode';
