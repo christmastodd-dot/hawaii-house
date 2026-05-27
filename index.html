@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1520">
 <title>Hawaii House: Path to Speaker</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Karla:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inconsolata:wght@500;600&display=swap');
@@ -393,6 +396,23 @@ body{
 .union-status{font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;white-space:nowrap;}
 .union-seek-btn{font-size:9px;font-weight:700;padding:3px 8px;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.35);border-radius:3px;cursor:pointer;color:#27ae60;white-space:nowrap;}
 .union-seek-btn:disabled{opacity:.35;cursor:not-allowed;}
+
+/* ============================================================
+   MOBILE  ·  built in five parts (max-width:760px breakpoint)
+   Part 1 — foundation: scroll, sizing, tap behavior
+   ============================================================ */
+@media (max-width:760px){
+  /* Let the fixed app shell scroll vertically on phones */
+  html,body{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-text-size-adjust:100%;}
+  body{-webkit-tap-highlight-color:transparent;}
+  /* Buttons feel snappier and avoid the 300ms tap delay / double-tap zoom */
+  button{touch-action:manipulation;}
+  /* Honor notch / home-indicator safe areas */
+  #hdr{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));}
+}
+@media (max-width:420px){
+  /* very small phones — handled progressively in later parts */
+}
 </style>
 </head>
 <body>
