@@ -424,6 +424,16 @@ body{
   /* thin separator between the stats band and the menu band */
   #war-btn{margin-left:0;}
 }
+/* Part 3 — layout: stack the chamber above a full-width sidebar */
+@media (max-width:760px){
+  #main{flex-direction:column;flex:none;overflow:visible;}
+  #chamber-panel{overflow:visible;padding:10px 10px 8px;min-width:0;}
+  #chamber{width:100%;}
+  #sidebar{width:100%;flex-shrink:0;border-left:none;border-top:2px solid var(--border2);overflow:visible;}
+  #sbc{flex:none;overflow-y:visible;max-height:none;}
+  #act-panel{position:sticky;bottom:0;background:var(--surface);z-index:5;}
+  #feed-wrap{position:relative;}
+}
 @media (max-width:420px){
   #hdr{gap:5px 7px;}
   #hdr h1{font-size:14px;}
@@ -3706,10 +3716,26 @@ function makeSeat(m,viewMode){
   return s;
 }
 
+function isMobile(){return window.innerWidth<=760;}
+// Re-flow the chamber when crossing the mobile breakpoint (rotation / resize)
+let _lastMobile=null,_resizeTimer=null;
+window.addEventListener('resize',()=>{
+  clearTimeout(_resizeTimer);
+  _resizeTimer=setTimeout(()=>{
+    const m=isMobile();
+    if(m!==_lastMobile){_lastMobile=m;if(G&&G.player)renderChamber();}
+  },150);
+});
+// On phones the body scrolls, so the scrollable chamber views (faction/seniority/org)
+// must grow to their natural height instead of becoming a nested scroll region.
+function applyChamberScroll(el){
+  if(isMobile()){el.style.flex='none';el.style.minHeight='';el.style.overflowY='visible';}
+  else{el.style.flex='1 1 0';el.style.minHeight='0';el.style.overflowY='auto';}
+}
 function renderChamber(){
   const el=document.getElementById('chamber');el.innerHTML='';
   if(G.viewMode==='faction'){
-    el.style.flex='1 1 0';el.style.minHeight='0';el.style.overflowY='auto';
+    applyChamberScroll(el);
     el.className='faction-mode';
     const rank=p=>{if(!p)return 999;const i=LEADERSHIP.findIndex(l=>l.id===p);if(i>=0)return i;if(p.startsWith('chair-'))return 100+parseInt(p.split('-')[1]);if(p.startsWith('vc-'))return 200+parseInt(p.split('-')[1]);return 999;};
     const sortMems=(arr)=>[...arr].sort((a,b)=>rank(a.isPlayer?G.player.pos:a.pos)-rank(b.isPlayer?G.player.pos:b.pos));
@@ -3829,7 +3855,7 @@ function renderChamber(){
       block.appendChild(lbl);block.appendChild(seats);el.appendChild(block);
     });
   } else if(G.viewMode==='seniority'){
-    el.style.flex='1 1 0';el.style.minHeight='0';el.style.overflowY='auto';
+    applyChamberScroll(el);
     el.className='faction-mode';
     const all=[{...G.player,isPlayer:true},...G.reps];
     // Group by seniority (terms in office)
@@ -3869,7 +3895,7 @@ function renderChamber(){
   } else if(G.viewMode==='org'){
     el.className='org-mode';
     el.style.width='';el.style.height='';el.style.position='';
-    el.style.flex='1 1 0';el.style.minHeight='0';el.style.overflowY='auto';
+    applyChamberScroll(el);
     const all=[{...G.player,isPlayer:true},...G.reps];
     // Full title for a position
     function fullTitle(pos){
