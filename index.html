@@ -448,6 +448,33 @@ body{
   .msub{font-size:11px;margin-bottom:12px;}
   #mok{padding:13px;font-size:14px;} /* bigger tap target for the primary CTA */
 }
+/* Part 5 — touch targets, seat sizing, and final polish */
+@media (max-width:760px){
+  /* Shrink seats so the widest row (10) fits a phone without clipping */
+  .seat{width:30px;height:30px;font-size:7px;border-radius:3px;}
+  .seat .seat-init{font-size:6px;margin-bottom:0;}
+  .seat .pty{font-size:7px;padding:1px 0;}
+  .seat .gos-badge{width:11px;height:11px;font-size:8px;}
+  #chamber{gap:3px;}
+  .crow{gap:3px;}
+  .fc-sep{margin:0 7px;min-height:30px;}
+  .fc-bubble{width:26px;height:26px;font-size:7px;}
+  /* chamber header + view toggle: wrap and grow tap targets */
+  .chdr{flex-wrap:wrap;gap:6px;}
+  .vtoggle{flex-wrap:wrap;}
+  .vbtn{padding:8px 11px;font-size:10px;}
+  /* ideology dots easier to hit */
+  .idot{width:11px;height:11px;}
+  .idot.me{width:13px;height:13px;}
+  /* horizontal pledge strip gets momentum scrolling */
+  .ppl-row{-webkit-overflow-scrolling:touch;}
+  .ppl-s{width:34px;height:26px;font-size:8px;}
+  /* action / global buttons: comfortable touch height */
+  .gact,.abt{padding:10px 11px;font-size:12px;}
+  /* taller activity log when open */
+  #feed{height:130px;}
+  #feed-toggle{padding:9px 16px;}
+}
 @media (max-width:420px){
   #hdr{gap:5px 7px;}
   #hdr h1{font-size:14px;}
@@ -455,6 +482,10 @@ body{
   #hdr .hs .v{font-size:11px;}
   #war-btn,#fac-pt-btn,#endorse-btn,#gossip-btn,#pau-hana-btn,#music-btn{font-size:10px;padding:6px 8px;}
   #modal{padding:16px 12px;}
+  /* narrowest phones: shrink seats further so 10-wide rows still fit */
+  .seat{width:27px;height:27px;font-size:6.5px;}
+  .seat .seat-init{font-size:5.5px;}
+  #chamber-panel{padding:8px 6px 6px;}
 }
 </style>
 </head>
