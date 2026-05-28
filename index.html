@@ -63,8 +63,10 @@ body{
 .rb-stat .rv{font-size:15px;font-weight:600;font-family:'Inconsolata',monospace;}
 .rb-stat .rv.winning{color:#4aaa68;}
 .rb-stat .rv.losing{color:#cc4a2a;}
-#race-declare-btn{margin-left:auto;background:rgba(200,160,32,.12);border:1px solid rgba(200,160,32,.38);color:var(--accent);padding:5px 14px;border-radius:3px;font-size:11px;font-weight:700;cursor:pointer;transition:background .15s;}
+#race-declare-btn{margin-left:8px;background:rgba(200,160,32,.12);border:1px solid rgba(200,160,32,.38);color:var(--accent);padding:5px 14px;border-radius:3px;font-size:11px;font-weight:700;cursor:pointer;transition:background .15s;}
 #race-declare-btn:hover{background:rgba(200,160,32,.26);}
+#cabinet-btn{margin-left:auto;background:rgba(200,160,32,.12);border:1px solid rgba(200,160,32,.38);color:var(--accent);padding:5px 14px;border-radius:3px;font-size:11px;font-weight:700;cursor:pointer;transition:background .15s;white-space:nowrap;}
+#cabinet-btn:hover{background:rgba(200,160,32,.26);}
 
 /* LAYOUT */
 #main{display:flex;flex:1;overflow:hidden;}
@@ -270,6 +272,9 @@ body{
 .db{background:var(--border);border-radius:2px;height:5px;overflow:hidden;}
 .df{height:100%;border-radius:2px;transition:width .3s;}
 .afn{font-size:11px;color:var(--muted);font-style:italic;margin-bottom:9px;}
+.dft-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);}
+.dft-row:last-child{border-bottom:none;}
+.dft-pos{flex:1;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .cscore{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 9px;margin:8px 0;}
 .cscore-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;}
 .cscore-meta{font-size:10px;color:var(--muted);margin-top:2px;}
@@ -556,6 +561,7 @@ body{
   <div class="rb-stat"><span class="rl">Majority</span><span class="rv">26</span></div>
   <div class="rb-stat"><span class="rl">Rival</span><span class="rv" id="rb-rival">0</span></div>
   <div class="rb-stat"><span class="rl">Undecided</span><span class="rv" id="rb-undec">0</span></div>
+  <button id="cabinet-btn" style="display:none" onclick="showDraftOrgModal()">📋 Draft Cabinet</button>
   <button id="race-declare-btn" style="display:none" onclick="declareForSpeaker()">Declare Candidacy</button>
 </div>
 
@@ -1669,7 +1675,13 @@ const ACTIONS=[
      if(!askMet)chance=Math.min(chance,0.12);
      if(Math.random()<chance){
        rep.pledge='player';
-       if(dealType&&dealType!=='none'){G.pledgeDeals.push({repId:rep.id,type:dealType,detail:dealDetail,repName:displayLast(rep)});}
+       if(dealType&&dealType!=='none'){
+         G.pledgeDeals.push({repId:rep.id,type:dealType,detail:dealDetail,repName:displayLast(rep)});
+         // Promised positions slot the member into your draft cabinet automatically
+         if(dealType==='chair'){const ci=COMMITTEES.indexOf(dealDetail);if(ci>=0)draftAssign('chair-'+ci,rep.id);}
+         else if(dealType==='vc'){const ci=COMMITTEES.indexOf(dealDetail);if(ci>=0)draftAssign('vc-'+ci,rep.id);}
+         else if(dealType==='leader'){draftAssign(dealDetail,rep.id);}
+       }
        const dealNote=dealType==='chair'?` You promised them the chair of ${dealDetail}.`:dealType==='vc'?` You promised them Vice Chair of ${dealDetail}.`:dealType==='leader'?` You promised them a leadership role.`:dealType==='seat'?` You promised them a committee seat.`:'';
        rep.log.push({m:G.month,y:G.year,text:`Pledged their Speaker vote to you.${dealNote}`});
        addEvent(`Rep. ${displayLast(rep)} pledged their support.${dealNote}`);
@@ -1843,6 +1855,55 @@ function availableActions(rep){
   });
 }
 
+// ===== DRAFT CABINET (Speaker race planning) =====
+// Assign a rep to a position in the draft org chart (one post per person).
+function draftAssign(posId,repId){
+  if(!G.speakerRace)return;
+  const d=G.speakerRace.draftOrg||(G.speakerRace.draftOrg={});
+  Object.keys(d).forEach(k=>{if(d[k]===repId)delete d[k];}); // a rep holds at most one post
+  if(repId==null||repId==='')delete d[posId];else d[posId]=parseInt(repId);
+}
+function draftSlotForRep(repId){
+  const d=G.speakerRace&&G.speakerRace.draftOrg;if(!d)return null;
+  return Object.keys(d).find(k=>d[k]===repId)||null;
+}
+function showDraftOrgModal(){
+  if(!G.speakerRace?.active){addEvent('Draft cabinet is only available during a Speaker race.');return;}
+  const d=G.speakerRace.draftOrg||(G.speakerRace.draftOrg={});
+  // Candidate pool: every introduced rep, your-pledges first, then by seniority
+  const cand=[...G.reps].filter(r=>r.introduced).sort((a,b)=>{
+    const ap=a.pledge==='player'?0:1,bp=b.pledge==='player'?0:1;if(ap!==bp)return ap-bp;
+    return b.seniority-a.seniority||(a.last||'').localeCompare(b.last||'');
+  });
+  function pledgeMark(r){return r.pledge==='player'?'✓':r.pledge?'⨯':'·';}
+  function optionsFor(posId){
+    const cur=d[posId];
+    let html=`<option value="">— unassigned —</option>`;
+    cand.forEach(r=>{
+      html+=`<option value="${r.id}"${cur===r.id?' selected':''}>${pledgeMark(r)} ${r.first} ${displayLast(r)} (${r.seniority===0?'Fr':r.seniority+'t'} · ${r.party})</option>`;
+    });
+    return html;
+  }
+  function section(title,slots){
+    return `<div class="msec"><h3>${title}</h3>${slots.map(s=>`
+      <div class="dft-row"><span class="dft-pos">${s.label}</span>
+      <select class="dft-sel" data-pos="${s.id}" style="flex:1;font-size:11px;max-width:60%">${optionsFor(s.id)}</select></div>`).join('')}</div>`;
+  }
+  const leaderSlots=LEADERSHIP.filter(l=>l.id!=='speaker').map(l=>({id:l.id,label:l.label}));
+  const chairSlots=COMMITTEES.map((c,i)=>({id:'chair-'+i,label:'Chair · '+c}));
+  const vcSlots=COMMITTEES.map((c,i)=>({id:'vc-'+i,label:'Vice Chair · '+c}));
+  showModal('📋 Draft Cabinet',`Plan who gets what if you win the gavel`,()=>`
+    <div class="mev" style="margin-bottom:10px">Assign members to the posts you'd hand out as Speaker. ✓ = pledged to you, ⨯ = pledged to a rival, · = undecided. These appear when you Secure a Pledge, and are filled automatically when you promise someone a position. If you win, this chart is enacted.</div>
+    ${section('Leadership',leaderSlots)}
+    ${section('Committee Chairs',chairSlots)}
+    ${section('Vice Chairs',vcSlots)}
+  `);
+  setTimeout(()=>{
+    document.querySelectorAll('.dft-sel').forEach(sel=>{
+      sel.addEventListener('change',()=>{draftAssign(sel.dataset.pos,sel.value);renderRaceBar();});
+    });
+  },10);
+}
 function showPledgeDealModal(repId){
   const rep=G.reps.find(r=>r.id===repId);if(!rep)return;
   const act=ACTIONS.find(a=>a.id==='secure-pledge');
@@ -1861,10 +1922,14 @@ function showPledgeDealModal(repId){
   // Rival offers — what other candidates have promised this rep
   const rivalOffers=(G.speakerRace?.candidates||[]).flatMap(c=>(c.deals||[]).filter(d=>d.repId===rep.id).map(d=>({...d,cand:c})));
   const rivalsHTML=rivalOffers.length?`<div class="mev" style="border-left:3px solid var(--hostile);padding:6px 10px;background:rgba(168,46,26,.08);font-size:12px;margin-bottom:8px"><strong>Rival offers on the table:</strong><ul style="margin:4px 0 0 16px;padding:0;font-size:11px">${rivalOffers.map(o=>{const t=o.type==='chair'?`Chair${o.detail?' of '+o.detail:''}`:o.type==='vc'?`Vice Chair${o.detail?' of '+o.detail:''}`:o.type==='leader'?(LEADERSHIP.find(l=>l.id===o.detail)?.label||'leadership role'):'committee seat';return`<li>${o.cand.leaderName}: <em>${t}</em></li>`;}).join('')}</ul></div>`:'';
+  // What this rep is slated for in your draft cabinet (if anything)
+  const draftSlot=draftSlotForRep(rep.id);
+  const draftHTML=draftSlot?`<div class="mev" style="border-left:3px solid var(--player);padding:6px 10px;background:rgba(40,116,166,.1);font-size:12px;margin-bottom:8px"><strong>In your draft cabinet:</strong> slated for <em>${posLabel(draftSlot)}</em>. Offer it below to make it a binding promise.</div>`:'';
   showModal(`Secure Pledge — Rep. ${displayLast(rep)}`,`Choose how to approach them`,()=>`
     <div class="msec">
       <h3>Your Ask</h3>
       ${askHTML}
+      ${draftHTML}
       ${rivalsHTML}
       <div class="mev" style="margin-bottom:8px">Select what, if anything, you offer in exchange for their pledge. Larger commitments increase your odds but create obligations you must honor if elected Speaker. Positions marked <em style="color:var(--hostile)">✗ promised</em> are already spoken for.</div>
       <div style="display:flex;flex-direction:column;gap:8px">
@@ -2406,7 +2471,7 @@ function initSpeakerRace(){
     else if(r.seniority>=3&&roll<0.22)r.pledgeAsk='vc';
     else r.pledgeAsk=null;
   });
-  G.speakerRace={active:true,declared:false,candidates,playerAcceptedOffer:null,rounds:[]};
+  G.speakerRace={active:true,declared:false,candidates,playerAcceptedOffer:null,rounds:[],draftOrg:{}};
   // Award triple capital for the speaker race
   const tripleBonus=calcCapital(G.player)*2;
   G.player.capital+=tripleBonus;
@@ -2665,17 +2730,25 @@ function runFloorVote(){
   }
   // Apply outcome
   const playerWon=winner&&winner.isPlayer;
+  const draftOrg=Object.assign({},G.speakerRace&&G.speakerRace.draftOrg);
   G.speakerRace=null;G.reps.forEach(r=>r.pledge=null);setView('disposition');
   if(playerWon){
     G.gameWon=true;G.player.pos='speaker';
-    // Honor pledge deals
     const dealNotes=[];
+    // Enact your draft cabinet: every drafted post is assigned to its member
+    Object.keys(draftOrg).forEach(posId=>{
+      const r=G.reps.find(x=>x.id===draftOrg[posId]);if(!r)return;
+      const prev=G.reps.find(x=>x.pos===posId);if(prev&&prev!==r)prev.pos=null;
+      r.pos=posId;
+      dealNotes.push(`Rep. ${displayLast(r)} → ${posLabel(posId)}`);
+    });
+    // Honor remaining promises: generic committee-seat deals (chair/vc/leader were
+    // already enacted via the draft cabinet above) and any stray un-drafted promise.
     G.pledgeDeals.forEach(d=>{
       const r=G.reps.find(r=>r.id===d.repId);if(!r)return;
-      if(d.type==='chair'){const ci=COMMITTEES.indexOf(d.detail);if(ci>=0){const prev=G.reps.find(x=>x.pos===`chair-${ci}`);if(prev)prev.pos=null;r.pos=`chair-${ci}`;dealNotes.push(`Rep. ${d.repName} → Chair of ${d.detail}`);}}
-      else if(d.type==='vc'){const ci=COMMITTEES.indexOf(d.detail);if(ci>=0){const prev=G.reps.find(x=>x.pos===`vc-${ci}`);if(prev)prev.pos=null;r.pos=`vc-${ci}`;dealNotes.push(`Rep. ${d.repName} → Vice Chair of ${d.detail}`);}}
-      else if(d.type==='leader'){const ldr=LEADERSHIP.find(l=>l.id===d.detail);if(ldr){const prev=G.reps.find(x=>x.pos===d.detail);if(prev)prev.pos=null;r.pos=d.detail;dealNotes.push(`Rep. ${d.repName} → ${ldr.label}`);}}
-      else if(d.type==='seat'){r.disposition=Math.min(maxDisposition(r),r.disposition+8);dealNotes.push(`Rep. ${d.repName} → committee appointment promised`);}
+      if(d.type==='seat'){r.disposition=Math.min(maxDisposition(r),r.disposition+8);dealNotes.push(`Rep. ${d.repName} → committee appointment promised`);return;}
+      const posId=d.type==='chair'?'chair-'+COMMITTEES.indexOf(d.detail):d.type==='vc'?'vc-'+COMMITTEES.indexOf(d.detail):d.type==='leader'?d.detail:null;
+      if(posId&&posId!=='chair--1'&&posId!=='vc--1'&&r.pos!==posId){const prev=G.reps.find(x=>x.pos===posId);if(prev&&prev!==r)prev.pos=null;r.pos=posId;dealNotes.push(`Rep. ${d.repName} → ${posLabel(posId)}`);}
     });
     G.pledgeDeals=[];
     const finalRound=rounds[rounds.length-1];
@@ -4563,6 +4636,7 @@ function renderRaceBar(){
   document.getElementById('rb-rival').className='rv'+(rival>=26?' losing':'');
   document.getElementById('rb-undec').textContent=undecided;
   document.getElementById('race-declare-btn').style.display=(!G.speakerRace.declared)?'block':'none';
+  document.getElementById('cabinet-btn').style.display='block';
 }
 
 // Keep dropdown panels anchored just below the (variable-height, wrapping) header on mobile
