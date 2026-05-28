@@ -270,6 +270,9 @@ body{
 .db{background:var(--border);border-radius:2px;height:5px;overflow:hidden;}
 .df{height:100%;border-radius:2px;transition:width .3s;}
 .afn{font-size:11px;color:var(--muted);font-style:italic;margin-bottom:9px;}
+.cscore{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 9px;margin:8px 0;}
+.cscore-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;}
+.cscore-meta{font-size:10px;color:var(--muted);margin-top:2px;}
 .rlog h4{font-size:8px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:4px;}
 .ll{font-size:10px;color:var(--muted);padding:3px 0;border-bottom:1px solid var(--border);line-height:1.4;}
 .ub{display:flex;flex-direction:column;gap:6px;margin:7px 0 9px;}
@@ -1172,6 +1175,38 @@ function affinityDesc(a){
   if(a>.15)return'Low — limited common ground.';
   return'Very low — significant differences.';
 }
+function compatLabel(v){
+  if(v>=78)return'Natural ally';
+  if(v>=60)return'Receptive';
+  if(v>=42)return'Workable';
+  if(v>=25)return'Guarded';
+  return'Difficult';
+}
+function compatColor(v){
+  if(v>=78)return'var(--ally)';
+  if(v>=60)return'var(--friendly)';
+  if(v>=42)return'var(--neutral)';
+  if(v>=25)return'var(--cool)';
+  return'var(--hostile)';
+}
+// Compatibility = how befriendable/recruitable a rep is (the natural ceiling on the
+// relationship), shown as a fuzzy estimate that sharpens with familiarity. Familiarity
+// (rep.intel, 0–100) grows from engaging with them and serving alongside them.
+function compatEstimate(rep){
+  if(!rep||rep.isPlayer)return null;
+  const trueVal=Math.round(maxDisposition(rep)); // realistic ceiling, 0..100
+  const intel=Math.max(0,Math.min(100,rep.intel||0));
+  const band=Math.round((1-intel/100)*28);       // ±28 at no intel → ±0 when fully known
+  const seed=(typeof rep.compatSeed==='number')?rep.compatSeed:0;
+  const exact=band<=3;
+  const est=exact?trueVal:Math.max(0,Math.min(100,Math.round(trueVal+seed*band)));
+  const conf=intel>=85?'High':intel>=50?'Moderate':intel>=20?'Low':'Unread';
+  return {est,band,conf,exact,trueVal};
+}
+function gainIntel(rep,amt){
+  if(!rep||rep.isPlayer)return;
+  rep.intel=Math.max(0,Math.min(100,(rep.intel||0)+amt));
+}
 // Max disposition another rep will warm to based on natural alignment. Freshmen
 // and same-party colleagues have a touch more headroom; very dissimilar reps
 // will never love you no matter how many lunches you buy.
@@ -1307,7 +1342,7 @@ const SENIORITY_WEIGHTS=[15,12,10,8,6,4,3,2,1,1]; // index = terms served (0..9)
 function genSeniority(){return wRand(SENIORITY_WEIGHTS.map((w,i)=>({v:i,w}))).v;}
 function genRep(id,district){
   const eth=wRand(ETHNICITIES);const g=Math.random()<.45?'m':'f';const n=genName(eth.id,g);const ideo=genIdeology();
-  return{id,first:n.first,last:n.last,district,age:rng(28,72),ethnicity:eth.id,ethnicityLabel:eth.label,gender:g,ideology:ideo,party:genParty(ideo),seniority:genSeniority(),warchest:rng(15,500)*1000,pos:null,factionId:null,pledge:null,disposition:rng(28,52),introduced:true,log:[],idotY:30+((id*17)%40),joinedFactionTurn:null,powerMod:0,relationships:{}};
+  return{id,first:n.first,last:n.last,district,age:rng(28,72),ethnicity:eth.id,ethnicityLabel:eth.label,gender:g,ideology:ideo,party:genParty(ideo),seniority:genSeniority(),warchest:rng(15,500)*1000,pos:null,factionId:null,pledge:null,disposition:rng(28,52),introduced:true,log:[],idotY:30+((id*17)%40),joinedFactionTurn:null,powerMod:0,relationships:{},intel:0,compatSeed:Math.random()*2-1};
 }
 function generateReps(){
   const pool=[];for(const d of DISTRICTS)for(let i=0;i<d.seats;i++)pool.push(d.id);
@@ -1823,6 +1858,7 @@ function showPledgeDealModal(repId){
     closeModal();
     G.player.capital-=act.cost;G.careerStats.capitalSpent+=act.cost;
     if(rep.district===G.player.district)G.districtActionThisTurn=true;
+    gainIntel(rep,12);
     act.do(rep,dealType,dealDetail);
     checkMilestones();render();
   };
@@ -1838,7 +1874,7 @@ function doAction(actId,repId){
   G.careerStats.capitalSpent+=act.cost;
   if(rep.district===G.player.district)G.districtActionThisTurn=true;
   const result=act.do(rep);
-  if(result!==false)checkMilestones();
+  if(result!==false){gainIntel(rep,act.id==='introduce'?20:12);checkMilestones();}
   render();
 }
 
@@ -1984,6 +2020,7 @@ function hostFactionPauHana(factionId){
     const chance=Math.min(0.95,0.32+(rep.disposition/100)*0.62);
     if(Math.random()<chance){
       const boost=rng(5,10);
+      gainIntel(rep,8);
       rep.disposition=Math.min(maxDisposition(rep),rep.disposition+boost);
       rep.log.push({m:G.month,y:G.year,text:`Attended a joint pau hana with your caucus — relationship warmed (+${boost}).`});
       attended.push({rep,boost});
@@ -2025,6 +2062,7 @@ function resolvePauHana(repIds){
     const chance=Math.min(0.95,0.18+(rep.disposition/100)*0.77);
     if(Math.random()<chance){
       const boost=rng(7,13);
+      gainIntel(rep,10);
       rep.disposition=Math.min(maxDisposition(rep),rep.disposition+boost);
       rep.log.push({m:G.month,y:G.year,text:`Attended your pau hana — relationship warmed (+${boost}).`});
       attended.push({rep,boost});
@@ -3123,6 +3161,8 @@ function endTurn(){
     if(isInPlayerFaction(r.id)&&r.disposition<60)r.disposition=Math.min(maxDisposition(r),r.disposition+1);
     // powerMod recovers by 2 per month (negative penalties fade)
     if(r.powerMod&&r.powerMod<0)r.powerMod=Math.min(0,r.powerMod+2);
+    // Familiarity grows passively from serving alongside them — faster for faction-mates
+    gainIntel(r,isInPlayerFaction(r.id)?2:1);
   });
   if(!G.districtActionThisTurn)G.districtApproval=Math.max(0,G.districtApproval-1);
   G.districtActionThisTurn=false;
@@ -4575,6 +4615,15 @@ function renderSidebar(){
     <div class="ir"><span class="is">Prog</span><div class="it"><div class="im" style="left:${((rep.ideology-1)/99*100)}%"></div></div><span class="is">Cons</span></div>
     <div class="ic">${ideoLabel(rep.ideology)}</div>
     <div class="ds"><div class="dh"><span>Disposition</span><span style="color:${dc};font-weight:700">${dl}</span></div><div class="db"><div class="df" style="width:${dp}%;background:${dc}"></div></div></div>
+    ${(()=>{
+      const c=compatEstimate(rep);if(!c)return '';
+      const cc=compatColor(c.est);
+      const range=c.exact?`${c.est}%`:`~${c.est}% <span style="opacity:.6">(±${c.band})</span>`;
+      return `<div class="cscore">
+        <div class="cscore-row"><span>Compatibility</span><span style="color:${cc};font-weight:700">${range}</span></div>
+        <div class="cscore-meta"><span style="color:${cc}">${compatLabel(c.est)}</span> · ${c.exact?'reading confirmed':c.conf+' confidence'}</div>
+      </div>`;
+    })()}
     <div class="afn">Affinity: ${affinityDesc(af)}</div>
     ${(()=>{
       if(!rep.relationships)return '';
