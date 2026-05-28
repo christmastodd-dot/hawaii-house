@@ -1357,13 +1357,32 @@ function assignPositions(reps){
   const rCount=reps.filter(r=>r.party==='R').length;
   const majParty=dCount>=rCount?'D':'R';
   const bySen=(a,b)=>b.seniority!==a.seniority?b.seniority-a.seniority:b.warchest-a.warchest;
-  const majPool=[...reps.filter(r=>r.party===majParty)].sort(bySen);
-  const minPool=[...reps.filter(r=>r.party!==majParty)].sort(bySen);
-  const pool=[...majPool,...minPool];
-  let i=0;
+  // Preference order for any open post: majority party first, then by seniority/warchest
+  const majFirst=(a,b)=>{const am=a.party===majParty?0:1,bm=b.party===majParty?0:1;return am!==bm?am-bm:bySen(a,b);};
+  // Leadership → most senior, majority party first
+  const pool=[...reps].sort(majFirst);let i=0;
   for(const lp of LEADERSHIP){if(i<pool.length){pool[i].pos=lp.id;i++;}}
-  for(let c=0;c<COMMITTEES.length;c++){if(i<pool.length){pool[i].pos='chair-'+c;i++;}}
-  for(let c=0;c<COMMITTEES.length;c++){if(i<pool.length){pool[i].pos='vc-'+c;i++;}}
+  // Assign one post to the best eligible (majority-first) candidate. forceFill=true falls
+  // back to an ineligible member when none are eligible; forceFill=false leaves the slot empty.
+  function fill(posId,eligible,forceFill){
+    const free=reps.filter(r=>!r.pos);if(!free.length)return;
+    let cands=free.filter(eligible);
+    if(!cands.length){if(!forceFill)return;cands=free;}
+    cands.sort(majFirst);
+    cands[0].pos=posId;
+  }
+  // Chairs → freshmen almost never (every committee gets a chair; a freshman only via forced
+  // fallback when no senior member is left, plus a rare 2% per-slot exception)
+  for(let c=0;c<COMMITTEES.length;c++){
+    const allowFreshman=Math.random()<0.02;
+    fill('chair-'+c,r=>allowFreshman?true:r.seniority>0,true);
+  }
+  // Vice chairs → Republicans almost never. When no eligible non-Republican is left, the VC
+  // seat is simply left vacant rather than handed to a Republican (plus a rare 2% exception).
+  for(let c=0;c<COMMITTEES.length;c++){
+    const allowR=Math.random()<0.02;
+    fill('vc-'+c,r=>allowR?true:r.party!=='R',false);
+  }
   const spk=reps.find(r=>r.pos==='speaker');
   if(spk){spk.seniority=Math.max(spk.seniority,9);spk.warchest=Math.max(spk.warchest,350000);spk.age=Math.max(spk.age,50);spk.disposition=38;}
 }
