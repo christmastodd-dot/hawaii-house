@@ -1447,6 +1447,18 @@ function ideoPenalty(ideology){
   if(ideology<=25||ideology>=75)return rng(70,90)/100;
   return 1;
 }
+// Power weight of a committee chairmanship (mirrors calcCapital): Finance=16,
+// Consumer Protection & Judiciary=10, everything else=4.
+function chairPower(ci){if(ci===0)return 16;if(ci===1||ci===2)return 10;return 4;}
+function chairTier(ci){const p=chairPower(ci);return p>=16?'flagship':p>=10?'major':'standard';}
+// Pledge-deal chance bonus scaled by the actual power of the offered position.
+function pledgeDealBonus(type,detail){
+  if(type==='seat')return .12;
+  if(type==='chair'){const p=chairPower(COMMITTEES.indexOf(detail));return p>=16?.36:p>=10?.27:.17;}
+  if(type==='vc'){const p=chairPower(COMMITTEES.indexOf(detail));return p>=16?.22:p>=10?.17:.11;}
+  if(type==='leader'){const cb=(LEADERSHIP.find(l=>l.id===detail)||{}).capBonus||4;return cb>=16?.32:cb>=10?.23:.14;}
+  return 0;
+}
 function calibrateWarchests(reps){
   reps.forEach(r=>{
     let mn,mx;
@@ -1627,7 +1639,7 @@ const ACTIONS=[
    do(rep,dealType,dealDetail){
      if(!G.speakerRace?.active){addEvent('No active speaker race.');return false;}
      if(!G.speakerRace.declared){G.speakerRace.declared=true;G.careerStats.speakerAttempts++;addEvent('You entered the Speaker race.');setView('pledges');}
-     const dealBonus=dealType==='chair'?.30:dealType==='vc'?.18:dealType==='leader'?.22:dealType==='seat'?.12:0;
+     const dealBonus=pledgeDealBonus(dealType,dealDetail);
      // If the rep has explicitly demanded a position and you didn't match it, the ask falls flat
      const ask=rep.pledgeAsk;
      const askRank={seat:1,vc:2,chair:3,leader:3};
@@ -1819,9 +1831,10 @@ function showPledgeDealModal(repId){
   const promisedChairs=new Set(G.pledgeDeals.filter(d=>d.type==='chair').map(d=>d.detail));
   const promisedVCs=new Set(G.pledgeDeals.filter(d=>d.type==='vc').map(d=>d.detail));
   const promisedLeaders=new Set(G.pledgeDeals.filter(d=>d.type==='leader').map(d=>d.detail));
-  const chairOpts=COMMITTEES.map((c,i)=>{const t=promisedChairs.has(c);return`<option value="${i}"${t?' disabled':''}>${c}${t?' ✗ promised':''}</option>`;}).join('');
-  const vcOpts=COMMITTEES.map((c,i)=>{const t=promisedVCs.has(c);return`<option value="${i}"${t?' disabled':''}>${c}${t?' ✗ promised':''}</option>`;}).join('');
-  const leaderOpts=LEADERSHIP.filter(l=>l.id!=='speaker').map(l=>{const t=promisedLeaders.has(l.id);return`<option value="${l.id}"${t?' disabled':''}>${l.label}${t?' ✗ promised':''}</option>`;}).join('');
+  const leaderTier=cb=>cb>=16?'top':cb>=10?'senior':'junior';
+  const chairOpts=COMMITTEES.map((c,i)=>{const t=promisedChairs.has(c);return`<option value="${i}"${t?' disabled':''}>${c} · ${chairTier(i)}${t?' ✗ promised':''}</option>`;}).join('');
+  const vcOpts=COMMITTEES.map((c,i)=>{const t=promisedVCs.has(c);return`<option value="${i}"${t?' disabled':''}>${c} · ${chairTier(i)}${t?' ✗ promised':''}</option>`;}).join('');
+  const leaderOpts=LEADERSHIP.filter(l=>l.id!=='speaker').map(l=>{const t=promisedLeaders.has(l.id);return`<option value="${l.id}"${t?' disabled':''}>${l.label} · ${leaderTier(l.capBonus)}${t?' ✗ promised':''}</option>`;}).join('');
   // Rep's ask (if any) — they may flatly refuse a straight ask
   const askLabels={leader:'a leadership role',chair:'a committee chairmanship',vc:'a vice-chairmanship',seat:'a committee seat'};
   const askHTML=rep.pledgeAsk?`<div class="mev" style="border-left:3px solid var(--accent);padding:6px 10px;background:rgba(232,184,75,.08);font-size:12px;margin-bottom:8px"><strong>Rep. ${displayLast(rep)} wants ${askLabels[rep.pledgeAsk]}.</strong> They won't commit on a straight ask — your offer needs to meet or exceed this.</div>`:'';
@@ -1839,15 +1852,26 @@ function showPledgeDealModal(repId){
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="deal" value="seat"> <div><strong>Promise a committee seat</strong> <span style="font-size:10px;color:var(--muted)">(+12% chance)</span></div></label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="deal" value="vc"> <div><strong>Promise a vice-chairmanship</strong>
           <select id="deal-vc-sel" style="margin-left:6px;font-size:11px">${vcOpts}</select>
-          <span style="font-size:10px;color:var(--muted)">(+18% chance)</span></div></label>
+          <span id="vc-bonus-lbl" style="font-size:10px;color:var(--muted)"></span></div></label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="deal" value="leader"> <div><strong>Promise a leadership role</strong>
           <select id="deal-leader-sel" style="margin-left:6px;font-size:11px">${leaderOpts}</select>
-          <span style="font-size:10px;color:var(--muted)">(+22% chance)</span></div></label>
+          <span id="leader-bonus-lbl" style="font-size:10px;color:var(--muted)"></span></div></label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="deal" value="chair"> <div><strong>Promise a committee chairmanship</strong>
           <select id="deal-chair-sel" style="margin-left:6px;font-size:11px">${chairOpts}</select>
-          <span style="font-size:10px;color:var(--muted)">(+30% chance)</span></div></label>
+          <span id="chair-bonus-lbl" style="font-size:10px;color:var(--muted)"></span></div></label>
       </div>
+      <div class="mev" style="font-size:10px;color:var(--muted);margin-top:6px">Higher-power posts (e.g. Finance chair, Majority Leader) sway pledges more than minor ones.</div>
     </div>`);
+  // Live bonus readouts that reflect the power of the selected committee/role
+  const pctTxt=b=>`(+${Math.round(b*100)}% chance)`;
+  function refreshBonusLabels(){
+    const cs=document.getElementById('deal-chair-sel'),vs=document.getElementById('deal-vc-sel'),ls=document.getElementById('deal-leader-sel');
+    if(cs)document.getElementById('chair-bonus-lbl').textContent=pctTxt(pledgeDealBonus('chair',COMMITTEES[parseInt(cs.value)]));
+    if(vs)document.getElementById('vc-bonus-lbl').textContent=pctTxt(pledgeDealBonus('vc',COMMITTEES[parseInt(vs.value)]));
+    if(ls)document.getElementById('leader-bonus-lbl').textContent=pctTxt(pledgeDealBonus('leader',ls.value));
+  }
+  ['deal-chair-sel','deal-vc-sel','deal-leader-sel'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',refreshBonusLabels);});
+  refreshBonusLabels();
   document.getElementById('mok').textContent='Make Your Ask →';
   document.getElementById('mok').onclick=()=>{
     const dealType=document.querySelector('input[name="deal"]:checked')?.value||'none';
