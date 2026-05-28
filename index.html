@@ -417,11 +417,12 @@ body{
   /* Buttons feel snappier and avoid the 300ms tap delay / double-tap zoom */
   button{touch-action:manipulation;}
   /* Honor notch / home-indicator safe areas */
-  #hdr{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));}
+  /* Honor notch / Dynamic Island / home-indicator safe areas (full padding set in Part 2) */
 }
 /* Part 2 — header: wrap the single dense row into tidy stacked rows */
 @media (max-width:760px){
-  #hdr{flex-wrap:wrap;gap:6px 10px;padding:7px 12px;}
+  /* Push the header below the iPhone status bar / notch (camera) using the top safe-area inset */
+  #hdr{flex-wrap:wrap;gap:6px 10px;padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left));}
   #hdr h1{order:0;font-size:15px;}
   #end-btn{order:1;margin-left:auto;padding:8px 16px;font-size:12px;}
   #hdr .hs{order:2;flex-direction:row;align-items:baseline;gap:4px;}
