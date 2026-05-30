@@ -2212,13 +2212,11 @@ function seekLeadership(){
 }
 
 // ===== FACTION FOUNDING =====
-// During the first calendar year of service the rule is simply "unaffiliated same-party
-// colleagues" (freshman class bonds form fast). After that, the usual Friendly+ threshold
-// applies. Affiliated members are never eligible regardless of year.
-function inFirstYear(){return G.year<2027||(G.year===2027&&G.month<11);}
+// Founding requires same-party colleagues at Friendly (60+) disposition who are
+// currently unaffiliated. The starting setup guarantees at least 3 such members
+// (see startGame) so founding is feasible from day one.
 function eligibleFoundingMembers(){
-  const minDisp=inFirstYear()?0:60;
-  return G.reps.filter(r=>r.party===G.player.party&&r.disposition>=minDisp&&!r.factionId);
+  return G.reps.filter(r=>r.party===G.player.party&&r.disposition>=60&&!r.factionId);
 }
 // Faction transition tuning: significant bonus for joining, 50% larger hit for jumping ship,
 // plus a small "untrustworthy" haircut on everyone else when you leave a faction.
@@ -2259,9 +2257,8 @@ function applyFactionTransitionEffects({joiningFactionId,fromOwn,fromNpcId,aband
 function showFoundFaction(){
   const pool=eligibleFoundingMembers();
   if(pool.length<3){
-    const rule=inFirstYear()?'unaffiliated same-party colleagues':'<strong>Friendly</strong> (60+) and unaffiliated same-party colleagues';
-    showModal('Need More Allies','You need at least 3 colleagues to found a caucus.',()=>`
-      <div class="msec"><div class="mev">A faction needs three founding members at minimum. Recruit or build relationships until at least three are ${rule}.</div>
+    showModal('Need More Allies','You need at least 3 friendly same-party colleagues to found a caucus.',()=>`
+      <div class="msec"><div class="mev">A faction needs three founding members at minimum. Build your relationships with same-party colleagues until at least three are <strong>Friendly</strong> (60+) and unaffiliated.</div>
       <div class="mev">Currently eligible: <strong>${pool.length}</strong> ${pool.length===1?'colleague':'colleagues'}.</div></div>`);
     return;
   }
@@ -2270,10 +2267,10 @@ function showFoundFaction(){
     const ad=b.disposition-a.disposition;if(ad)return ad;
     return Math.abs(a.ideology-G.player.ideology)-Math.abs(b.ideology-G.player.ideology);
   });
-  showModal('Found Your Faction',inFirstYear()?'Pick founding members from unaffiliated colleagues (minimum 3)':'Pick founding members (minimum 3)',()=>`
+  showModal('Found Your Faction','Pick founding members (minimum 3)',()=>`
     <div class="msec">
       <div class="fr"><label>Caucus Name</label><input id="ff-name" type="text" maxlength="40" value="New Hawaii Caucus"></div>
-      <div class="mev" style="margin-top:8px">Select <strong>at least 3</strong> ${inFirstYear()?'unaffiliated same-party colleagues':'friendly same-party colleagues'} to commit as founding members. They will join automatically.</div>
+      <div class="mev" style="margin-top:8px">Select <strong>at least 3</strong> friendly same-party colleagues to commit as founding members. They will join automatically.</div>
       <div id="ff-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:4px;margin-top:6px;display:flex;flex-direction:column;gap:2px;">
         ${sorted.map(r=>{
           const dl=dispLabel(r.disposition);const dc=dispColor(r.disposition);
@@ -4896,10 +4893,16 @@ function startGame(){
       r.relationships[other.id]=base;
     });
   });
-  // Give player a handful of starting-friendly colleagues — same party, weighted by overall affinity
-  // (ideology, seniority cohort, district, demographics) so freshman class peers and the like surface naturally.
-  const samePtyReps=G.reps.filter(r=>r.party===G.player.party).sort((a,b)=>affinity(G.player,b)-affinity(G.player,a));
-  samePtyReps.slice(0,rng(4,6)).forEach(r=>{r.disposition=rng(62,74);});
+  // Starting friendly colleagues — guarantee at least 3 UNAFFILIATED same-party reps at
+  // Friendly+ so the player can found a caucus from the opening day. Pick the highest-
+  // affinity unaffiliated peers first, then layer a few more friendly same-party reps
+  // (any affiliation) for color.
+  const samePty=G.reps.filter(r=>r.party===G.player.party);
+  const unaffSorted=samePty.filter(r=>!r.factionId).sort((a,b)=>affinity(G.player,b)-affinity(G.player,a));
+  const guaranteed=unaffSorted.slice(0,3);
+  guaranteed.forEach(r=>{r.disposition=rng(64,74);}); // solid Friendly, occasionally Ally-ish
+  const extra=samePty.filter(r=>!guaranteed.includes(r)).sort((a,b)=>affinity(G.player,b)-affinity(G.player,a));
+  extra.slice(0,rng(2,4)).forEach(r=>{r.disposition=rng(60,72);});
   // Assign player a starting Vice Chair if they are in the majority party
   {
     const dCnt=G.reps.filter(r=>r.party==='D').length;
