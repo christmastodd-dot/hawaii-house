@@ -1606,7 +1606,7 @@ const ACTIONS=[
      }
      showJoinOutcome({success,rep,faction:f,chancePct:Math.round(chance*100),xferred,effects});
    }},
-  {id:'propose-merger',label:'Propose Faction Merger',cost:3,needsIntro:true,hideAfterIntro:false,phase:'any',requiresFactionLeader:true,desc:'Combine your caucus with theirs. The larger faction takes the lead and keeps its name.',
+  {id:'propose-merger',label:'Propose Faction Merger',cost:3,needsIntro:true,hideAfterIntro:false,phase:'any',requiresFactionLeader:true,desc:'Combine your caucus with theirs. Only works if the smaller (absorbed) faction has 3 or fewer members. The larger faction keeps its name and leader.',
    do(rep){
      if(!G.playerFaction){addEvent('You need your own faction first.');return false;}
      const targetF=G.factions.find(f=>f.leaderId===rep.id);
@@ -1614,6 +1614,11 @@ const ACTIONS=[
      if(targetF.party!==G.player.party){addEvent(`The ${targetF.name} is a ${targetF.party==='D'?'Democratic':'Republican'} faction — mergers must stay within a party.`);return false;}
      const mySize=G.playerFaction.members.length+1; // include player
      const theirSize=targetF.members.length;
+     // Cannot absorb a faction larger than 3 — whichever side would be absorbed must be ≤3
+     if(Math.min(mySize,theirSize)>3){
+       addEvent(`Mergers can only absorb a faction of 3 or fewer. Both caucuses are too large to fold into the other.`);
+       return false;
+     }
      const fa=factionPairAffinity('player',targetF.id);
      const faMod=fa==null?0:(fa-50)/220; // ±0.23
      let chance=.18+affinity(G.player,rep)*.42+(rep.disposition-40)/180+faMod;
@@ -1849,6 +1854,7 @@ function availableActions(rep){
     if(a.id==='join-caucus'&&isInPlayerFaction(rep.id))return false;
     if(a.id==='join-caucus'&&G.player.factionId&&G.factions.find(f=>f.leaderId===rep.id)?.id===G.player.factionId)return false;
     if(a.id==='propose-merger'&&!G.playerFaction)return false;
+    if(a.id==='propose-merger'){const tf=G.factions.find(f=>f.leaderId===rep.id);if(tf&&Math.min((G.playerFaction?.members.length||0)+1,tf.members.length)>3)return false;}
     if(a.id==='donate'&&G.donatedTo.includes(rep.id))return false;
     if(a.undermine&&isInPlayerFaction(rep.id))return false;
     return true;
@@ -1870,17 +1876,23 @@ function draftSlotForRep(repId){
 function showDraftOrgModal(){
   if(!G.speakerRace?.active){addEvent('Draft cabinet is only available during a Speaker race.');return;}
   const d=G.speakerRace.draftOrg||(G.speakerRace.draftOrg={});
-  // Candidate pool: every introduced rep, your-pledges first, then by seniority
+  // Candidate pool: every introduced rep, your-pledges first, then by current power (so the
+  // most influential members surface at the top of every dropdown).
   const cand=[...G.reps].filter(r=>r.introduced).sort((a,b)=>{
     const ap=a.pledge==='player'?0:1,bp=b.pledge==='player'?0:1;if(ap!==bp)return ap-bp;
-    return b.seniority-a.seniority||(a.last||'').localeCompare(b.last||'');
+    return calcPower(b)-calcPower(a)||b.seniority-a.seniority||(a.last||'').localeCompare(b.last||'');
   });
   function pledgeMark(r){return r.pledge==='player'?'✓':r.pledge?'⨯':'·';}
+  function memLine(r){
+    const pos=posLabel(r.pos)||'no post';
+    const fac=getFactionName(r)||'Independent';
+    return `${pledgeMark(r)} ${r.first} ${displayLast(r)} · pwr ${calcPower(r)} · ${pos} · ${fac}`;
+  }
   function optionsFor(posId){
     const cur=d[posId];
     let html=`<option value="">— unassigned —</option>`;
     cand.forEach(r=>{
-      html+=`<option value="${r.id}"${cur===r.id?' selected':''}>${pledgeMark(r)} ${r.first} ${displayLast(r)} (${r.seniority===0?'Fr':r.seniority+'t'} · ${r.party})</option>`;
+      html+=`<option value="${r.id}"${cur===r.id?' selected':''}>${memLine(r)}</option>`;
     });
     return html;
   }
@@ -1913,9 +1925,11 @@ function showPledgeDealModal(repId){
   const promisedVCs=new Set(G.pledgeDeals.filter(d=>d.type==='vc').map(d=>d.detail));
   const promisedLeaders=new Set(G.pledgeDeals.filter(d=>d.type==='leader').map(d=>d.detail));
   const leaderTier=cb=>cb>=16?'top':cb>=10?'senior':'junior';
-  const chairOpts=COMMITTEES.map((c,i)=>{const t=promisedChairs.has(c);return`<option value="${i}"${t?' disabled':''}>${c} · ${chairTier(i)}${t?' ✗ promised':''}</option>`;}).join('');
-  const vcOpts=COMMITTEES.map((c,i)=>{const t=promisedVCs.has(c);return`<option value="${i}"${t?' disabled':''}>${c} · ${chairTier(i)}${t?' ✗ promised':''}</option>`;}).join('');
-  const leaderOpts=LEADERSHIP.filter(l=>l.id!=='speaker').map(l=>{const t=promisedLeaders.has(l.id);return`<option value="${l.id}"${t?' disabled':''}>${l.label} · ${leaderTier(l.capBonus)}${t?' ✗ promised':''}</option>`;}).join('');
+  // Annotate each position with who is currently slated for it in your draft cabinet
+  const draftedAt=posId=>{const dr=G.speakerRace?.draftOrg?.[posId];if(dr==null)return '';const r=G.reps.find(x=>x.id===dr);return r?` · drafted: ${displayLast(r)}`:'';};
+  const chairOpts=COMMITTEES.map((c,i)=>{const t=promisedChairs.has(c);return`<option value="${i}"${t?' disabled':''}>${c} · ${chairTier(i)}${draftedAt('chair-'+i)}${t?' ✗ promised':''}</option>`;}).join('');
+  const vcOpts=COMMITTEES.map((c,i)=>{const t=promisedVCs.has(c);return`<option value="${i}"${t?' disabled':''}>${c} · ${chairTier(i)}${draftedAt('vc-'+i)}${t?' ✗ promised':''}</option>`;}).join('');
+  const leaderOpts=LEADERSHIP.filter(l=>l.id!=='speaker').map(l=>{const t=promisedLeaders.has(l.id);return`<option value="${l.id}"${t?' disabled':''}>${l.label} · ${leaderTier(l.capBonus)}${draftedAt(l.id)}${t?' ✗ promised':''}</option>`;}).join('');
   // Rep's ask (if any) — they may flatly refuse a straight ask
   const askLabels={leader:'a leadership role',chair:'a committee chairmanship',vc:'a vice-chairmanship',seat:'a committee seat'};
   const askHTML=rep.pledgeAsk?`<div class="mev" style="border-left:3px solid var(--accent);padding:6px 10px;background:rgba(232,184,75,.08);font-size:12px;margin-bottom:8px"><strong>Rep. ${displayLast(rep)} wants ${askLabels[rep.pledgeAsk]}.</strong> They won't commit on a straight ask — your offer needs to meet or exceed this.</div>`:'';
