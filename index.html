@@ -2488,6 +2488,97 @@ function npcFactionTurn(){
 }
 
 // ===== SPEAKER RACE =====
+// Build a "candidate" object from a rep (their faction members pre-pledge as a bloc).
+function _buildCand(rep,color){
+  const facId=rep.factionId;
+  const pledges=facId?G.reps.filter(r=>r.factionId===facId).map(r=>r.id):[rep.id];
+  return {factionId:facId||('r'+rep.id),leaderName:`Rep. ${displayLast(rep)}`,pledges,dealWithPlayer:null,deals:[],pledgeColor:color};
+}
+function _assignPledgeAsks(){
+  G.reps.forEach(r=>{
+    if(!r||r.pledge){r.pledgeAsk=null;return;}
+    const roll=Math.random();
+    if(r.pos&&r.pos.startsWith('chair-')&&roll<0.40)r.pledgeAsk='leader';
+    else if(r.pos&&LEADERSHIP.some(l=>l.id===r.pos)&&roll<0.55)r.pledgeAsk='leader';
+    else if(r.pos&&r.pos.startsWith('vc-')&&roll<0.32)r.pledgeAsk='chair';
+    else if(r.seniority>=5&&roll<0.25)r.pledgeAsk='chair';
+    else if(r.seniority>=3&&roll<0.22)r.pledgeAsk='vc';
+    else r.pledgeAsk=null;
+  });
+}
+// Two-way challenge: sitting Speaker vs a single challenger. Player can be on either side
+// (or kingmaker if neither). Differs from the open biennial race in initSpeakerRace().
+function initChallengeRace(challengerRep){
+  const playerIsSpeaker=G.player.pos==='speaker';
+  const speakerNpc=G.reps.find(r=>r.pos==='speaker');
+  if(!playerIsSpeaker&&!speakerNpc){addEvent('No sitting Speaker to challenge.');return;}
+  if(!challengerRep||challengerRep.id==null){addEvent('Need a challenger.');return;}
+  const playerIsChallenger=challengerRep===G.player||challengerRep.id===0;
+  G.reps.forEach(r=>{r.pledge=null;r.pledgeAsk=null;});
+  G.pledgeDeals=[];
+  const PAL=['#c0392b','#27ae60'];
+  const candidates=[];
+  // Defender (Speaker) is one NPC candidate slot if not the player
+  if(!playerIsSpeaker&&speakerNpc)candidates.push(_buildCand(speakerNpc,PAL[0]));
+  // Challenger is the other NPC slot if not the player
+  if(!playerIsChallenger)candidates.push(_buildCand(challengerRep,PAL[1]));
+  // Apply pre-pledges
+  candidates.forEach(c=>c.pledges.forEach(id=>{const r=G.reps.find(rr=>rr.id===id);if(r)r.pledge=c.factionId;}));
+  _assignPledgeAsks();
+  G.speakerRace={active:true,declared:(playerIsSpeaker||playerIsChallenger),candidates,playerAcceptedOffer:null,rounds:[],draftOrg:{},challenge:true,playerIsSpeaker,playerIsChallenger,defenderId:playerIsSpeaker?0:speakerNpc.id,challengerId:playerIsChallenger?0:challengerRep.id};
+  const tripleBonus=calcCapital(G.player)*2;
+  G.player.capital+=tripleBonus;
+  if(G.careerStats&&playerIsChallenger)G.careerStats.speakerAttempts++;
+  const defName=playerIsSpeaker?'You (Speaker)':`Rep. ${displayLast(speakerNpc)} (Speaker)`;
+  const chalName=playerIsChallenger?'You':`Rep. ${displayLast(challengerRep)}`;
+  const setupTxt=playerIsChallenger?`You launched a Speakership challenge against the sitting Speaker.`:playerIsSpeaker?`Rep. ${displayLast(challengerRep)} has launched a challenge to your Speakership.`:`Rep. ${displayLast(challengerRep)} launched a challenge against the sitting Speaker.`;
+  addEvent(`⚔️ Speakership Challenge — ${setupTxt} +${tripleBonus} CP awarded.`);
+  showModal('⚔️ Speakership Challenge',setupTxt,()=>`
+    <div class="msec"><h3>Two-Way Contest</h3>
+      <div class="mev">A direct challenge to the sitting Speaker — only these two are on the ballot. Members across the chamber will choose sides.</div>
+      <div class="mev"><strong>Defender:</strong> ${defName}</div>
+      <div class="mev"><strong>Challenger:</strong> ${chalName}</div>
+      ${(!playerIsSpeaker&&!playerIsChallenger)?'<div class="mev" style="opacity:.85;margin-top:8px">You can play kingmaker — secure pledges for whichever side you favor, and call in deals afterward. The challenger will likely make you an offer next.</div>':''}
+    </div>`);
+  // If neither side is the player, the challenger reaches out with an offer
+  if(!playerIsSpeaker&&!playerIsChallenger){
+    document.getElementById('mok').onclick=()=>{closeModal();showAllCandidateOffers(candidates.filter(c=>c.factionId===(challengerRep.factionId||('r'+challengerRep.id))));};
+  }
+  setView('pledges');
+}
+// Player-initiated challenge for the Speakership (action button under Your Actions)
+function challengeSpeakership(){
+  if(G.gameOver||G.gameWon)return;
+  if(G.speakerRace?.active){addEvent('A Speaker race is already underway.');return;}
+  if(G.month<5||G.month>12){addEvent('Speakership challenges can only be launched May through December.');return;}
+  if(G.player.pos==='speaker'){addEvent('You already hold the Speakership.');return;}
+  const pfSize=(G.playerFaction?.members.length||0)+1;
+  if(pfSize<8){addEvent('You need 8 caucus members (including yourself) to mount a Speakership challenge.');return;}
+  initChallengeRace(G.player);
+}
+// NPC may challenge a sitting Speaker between May and December
+function maybeNpcChallenge(){
+  if(G.speakerRace?.active)return;
+  if(G.month<5||G.month>12)return;
+  // Need a sitting Speaker (NPC or player)
+  const speakerNpc=G.reps.find(r=>r.pos==='speaker');
+  if(!speakerNpc&&G.player.pos!=='speaker')return;
+  // Candidate challengers: faction leaders with 8+ members (excluding sitting speaker's faction)
+  const speakerFac=speakerNpc?speakerNpc.factionId:G.player.factionId;
+  const eligible=G.factions.filter(f=>f.members.length>=8&&f.id!==speakerFac).map(f=>G.reps.find(r=>r.id===f.leaderId)).filter(Boolean);
+  if(!eligible.length)return;
+  for(const leader of eligible){
+    // ~2% per leader per month; nudged up when the Speaker is weak (low warchest or low approval) or this leader is much more powerful
+    let p=0.020;
+    const spkRep=speakerNpc||G.player;
+    if(calcPower(leader)>calcPower(spkRep)+10)p+=0.015;
+    if(spkRep.warchest&&spkRep.warchest<60000)p+=0.005;
+    if(Math.random()<p){
+      initChallengeRace(leader);
+      return; // only one challenge per month
+    }
+  }
+}
 function initSpeakerRace(){
   const candidates=[];
   for(const f of G.factions){
@@ -2941,6 +3032,11 @@ function runElection(){
   const remaining=Math.max(0,turnover-vacating.length);
   const vulnerable=G.reps.filter(r=>!r.vacating&&r.pos!=='speaker'&&r.seniority<7).sort(()=>Math.random()-.5);
   const losers=[...vacating,...vulnerable.slice(0,remaining)];
+  // Speaker + 7+-term veterans usually coast (~98% retention), but a rare surprise upset
+  // (primary scandal, sudden retirement, etc.) can take one down.
+  G.reps.filter(r=>!r.vacating&&!losers.includes(r)&&(r.pos==='speaker'||r.seniority>=7)).forEach(s=>{
+    if(Math.random()<0.02)losers.push(s);
+  });
   const summary=[`General election: ${losers.length} seat${losers.length===1?'':'s'} changed hands${vacating.length?` (${vacating.length} from announced vacanc${vacating.length===1?'y':'ies'})`:''}.`];
   let playerLosses=0;
   for(const loser of losers){
@@ -3401,10 +3497,18 @@ function endTurn(){
     elEvts.forEach(e=>addEvent(e));
     if(!generalResult.won) G.gameOver=true;
   }
-  // Init speaker race in December of election years
-  if(G.month===12&&G.year>=2028&&G.year%2===0&&!G.speakerRace){
+  // Speaker keeps the gavel unless the seat is vacant. The open biennial race only
+  // fires in December of an even year when no one currently holds the position
+  // (e.g. the previous Speaker retired, lost, or vacated). Challenges to a sitting
+  // Speaker are triggered separately via challengeSpeakership() or maybeNpcChallenge().
+  const speakerSeatOpen=!G.reps.some(r=>r.pos==='speaker')&&G.player.pos!=='speaker';
+  if(G.month===12&&G.year>=2028&&G.year%2===0&&!G.speakerRace&&speakerSeatOpen){
     G.player.capital=calcCapital(G.player);render();
     initSpeakerRace();return;
+  }
+  // NPC challenges to a sitting Speaker can pop any month May-Dec
+  if(G.month>=5&&G.month<=12&&!G.speakerRace){
+    maybeNpcChallenge();
   }
   // Floor vote at end of December of election year
   if(prevMonth===12&&prevYear>=2028&&prevYear%2===0&&G.speakerRace?.active){
@@ -4745,6 +4849,7 @@ function renderSidebar(){
         ${canEndorse?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Endorse in Election: select a rep and use the action.</div>`:''}
         ${G.month===12&&!G.player.pos?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Tip: Select a committee chair → "Lobby for Committee Seat"</div>`:''}
         ${G.speakerRace?.active&&!G.speakerRace.declared?`<button class="gact" onclick="declareForSpeaker()"><span>Declare for Speaker</span><span class="ac">Free</span></button>`:''}
+        ${(!G.speakerRace?.active&&G.month>=5&&G.month<=12&&G.player.pos!=='speaker'&&(G.playerFaction?.members.length||0)+1>=8&&(G.reps.some(r=>r.pos==='speaker')))?`<button class="gact" onclick="challengeSpeakership()"><span>⚔️ Challenge for Speakership</span><span class="ac">Free</span></button>`:''}
       </div>`;
     ap.style.display='none';return;
   }
