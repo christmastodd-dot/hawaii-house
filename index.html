@@ -1705,6 +1705,30 @@ const ACTIONS=[
    do(rep){const b=Math.round(affinity(G.player,rep)*9)+6;rep.disposition=Math.min(maxDisposition(rep),rep.disposition+b);const dest=pick([distName(rep.district),distName(G.player.district),'Maui','the Big Island','Kauaʻi','a conference on Oʻahu']);const act=pick(['attended a community event','toured local infrastructure projects','visited constituent groups','participated in a district cleanup','attended a town hall together']);rep.log.push({m:G.month,y:G.year,text:`Traveled with you to ${dest}.`});if(rep.district===G.player.district)G.districtActionThisTurn=true;addEvent(`You and Rep. ${displayLast(rep)} ${act} in ${dest}. The shared experience noticeably strengthened your bond.`);}},
   {id:'endorse',label:'Endorse in Election',cost:2,needsIntro:true,hideAfterIntro:false,phase:'nov-even',desc:'Publicly back their reelection campaign. Big reward if they win.',
    do(rep){const win=Math.random()<.82;if(win){rep.disposition=Math.min(maxDisposition(rep),rep.disposition+12);rep.warchest+=rng(5,15)*1000;rep.log.push({m:G.month,y:G.year,text:'You endorsed them — they won.'});addEvent(`You endorsed Rep. ${displayLast(rep)}, who won reelection. They are deeply grateful.`);}else{rep.disposition=Math.max(0,rep.disposition-5);rep.log.push({m:G.month,y:G.year,text:'You endorsed them — they lost.'});addEvent(`You endorsed Rep. ${displayLast(rep)}, who lost. Your political judgment was questioned.`);};}},
+  {id:'persuade-stay',label:'Convince Them to Stay',cost:2,needsIntro:true,hideAfterIntro:false,phase:'any',desc:'Talk a wavering faction-mate out of leaving the House. Base 20% chance, up to 60% with strong affinity.',
+   do(rep){
+     if(!isInPlayerFaction(rep.id)){addEvent('Only your own faction members are open to that kind of conversation.');return false;}
+     if(!rep.vacating||rep.vacating.reason!=='not-running'){addEvent(`Rep. ${displayLast(rep)} isn't wavering — there's nothing to talk them out of.`);return false;}
+     const chance=Math.min(.60,.20+affinity(G.player,rep)*.40);
+     const success=Math.random()<chance;
+     if(success){
+       delete rep.vacating;
+       rep.disposition=Math.min(maxDisposition(rep),rep.disposition+5);
+       rep.log.push({m:G.month,y:G.year,text:'You convinced them to seek another term.'});
+       addEvent(`🤝 Rep. ${displayLast(rep)} reversed course — they'll seek re-election after a long talk with you.`);
+     } else {
+       rep.disposition=Math.max(0,rep.disposition-3);
+       rep.log.push({m:G.month,y:G.year,text:'Heard you out but stayed determined not to run again.'});
+       addEvent(`Rep. ${displayLast(rep)} appreciated the conversation but their mind is made up about not seeking re-election.`);
+     }
+     showModal(success?'They\'re Staying':'Their Mind Is Made Up',`Rep. ${displayLast(rep)} · ${success?'will seek re-election':'still not running'}`,()=>`
+       <div class="msec">
+         <div class="mev" style="font-size:13px;line-height:1.7">${success
+           ?`<strong>Rep. ${displayLast(rep)}</strong> agreed to seek another term after your appeal. They've withdrawn the not-running announcement.`
+           :`<strong>Rep. ${displayLast(rep)}</strong> heard you out but won't reverse course. Their decision stands.`}</div>
+         <div class="mev" style="opacity:.75">Persuasion chance was about <strong>${Math.round(chance*100)}%</strong> — 20% base plus your affinity with them (max 60%).</div>
+       </div>`);
+   }},
   // UNDERMINE ACTIONS
   {id:'plant-story',label:'Plant a Negative Story',cost:1,needsIntro:true,hideAfterIntro:false,phase:'any',undermine:true,
    desc:'Feed a damaging angle to a local journalist. Erodes their political standing and strains peer relationships. Risk: they may suspect you.',
@@ -1855,6 +1879,7 @@ function availableActions(rep){
     if(a.id==='join-caucus'&&G.player.factionId&&G.factions.find(f=>f.leaderId===rep.id)?.id===G.player.factionId)return false;
     if(a.id==='propose-merger'&&!G.playerFaction)return false;
     if(a.id==='propose-merger'){const tf=G.factions.find(f=>f.leaderId===rep.id);if(tf&&Math.min((G.playerFaction?.members.length||0)+1,tf.members.length)>3)return false;}
+    if(a.id==='persuade-stay'&&!(isInPlayerFaction(rep.id)&&rep.vacating&&rep.vacating.reason==='not-running'))return false;
     if(a.id==='donate'&&G.donatedTo.includes(rep.id))return false;
     if(a.undermine&&isInPlayerFaction(rep.id))return false;
     return true;
