@@ -4942,7 +4942,22 @@ function render(){
 }
 
 // ===== INTERACTION =====
-function selectRep(id){G.selected=id;renderSidebar();document.getElementById('act-panel').style.display=id?'block':'none';if(id)renderSidebar();}
+function selectRep(id){
+  G.selected=id;renderSidebar();
+  document.getElementById('act-panel').style.display=id?'block':'none';
+  if(id)renderSidebar();
+  // On mobile the sidebar sits below the chamber, so tapping a rep otherwise buries the
+  // card off-screen — scroll it into view so the profile pops up immediately.
+  if(id&&isMobile()){
+    const sb=document.getElementById('sidebar');
+    if(sb)requestAnimationFrame(()=>{
+      const hdr=document.getElementById('hdr');
+      const hdrH=hdr?hdr.offsetHeight:0;
+      const y=sb.getBoundingClientRect().top+window.scrollY-hdrH-6;
+      window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
+    });
+  }
+}
 function showTip(e,rep){
   const t=document.getElementById('tip');const pl=posLabel(rep.pos);const fn=getFactionName(rep);
   const rivalCandTip=rep.pledge&&rep.pledge!=='player'?G.speakerRace?.candidates.find(c=>c.factionId===rep.pledge):null;
