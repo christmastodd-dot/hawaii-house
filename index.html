@@ -2045,14 +2045,42 @@ function doFundraise(){
   // Junior incumbents have a thinner donor network — first couple of terms raise less
   const s=G.player.seniority;
   const range=s===0?[4,12]:s===1?[6,16]:s===2?[10,26]:[15,40];
-  const gain=Math.round(rng(range[0],range[1])*1000*mult);G.player.warchest+=gain;
+  const gain=Math.round(rng(range[0],range[1])*1000*mult);playerRaise(gain);
   let extra=0;
   G.reps.filter(r=>isInPlayerFaction(r.id)&&dispId(r.disposition)==='ally').forEach(r=>{if(Math.random()<.4){const amt=rng(2,8)*1000;extra+=amt;}});
-  G.player.warchest+=extra;
+  if(extra)playerRaise(extra);
   const ideNote=mult<0.6?' (limited donor pool for your ideology)':mult<0.9?' (moderate donor base)':'';
   const seniorityNote=s<=1?' Your donor network is still building.':'';
   addEvent(`Fundraiser held (${G.fundraisersThisInterim}/${maxFundraisersThisInterim()} this interim). Raised ${fmtMoney(gain)}${ideNote}.${seniorityNote}${extra?` Plus ${fmtMoney(extra)} from allied members.`:''}`);
   checkMilestones();render();
+}
+// Every warchest gain the player earns flows through here so applyCampaignSpending()
+// can tax ~70% of each 2-year cycle's incoming money at election time.
+function playerRaise(amount){
+  if(!amount||amount<=0)return;
+  G.player.warchest+=amount;
+  G.player.cycleRaised=(G.player.cycleRaised||0)+amount;
+}
+// Deduct campaign expenditures at the general election. Spends ~70% of the cycle's
+// take (jittered 30-95%), capped at $150K overall, and capped at $60K unless the race
+// is genuinely competitive (low approval or a well-funded challenger).
+function applyCampaignSpending(){
+  const raised=G.player.cycleRaised||0;
+  if(raised<=0)return 0;
+  const pct=0.30+Math.random()*0.65;
+  let spend=Math.round(raised*pct);
+  if(spend>150000)spend=150000;
+  const ch=G.elecDeclarations?.find(d=>d.electionType==='general'&&d.fired&&!d.eliminated)?.challenger;
+  const chMoney=ch?ch.warchest:0;
+  const competitive=G.districtApproval<55||(G.player.warchest>0&&chMoney/G.player.warchest>0.4);
+  let cappedForSafety=false;
+  if(spend>60000&&!competitive){spend=60000;cappedForSafety=true;}
+  spend=Math.min(spend,G.player.warchest);
+  G.player.warchest=Math.max(0,G.player.warchest-spend);
+  G.player.cycleRaised=0;
+  const note=cappedForSafety?' (capped at $60K — a safe race doesn\'t warrant the full budget)':spend===150000?' (hit the $150K ceiling)':'';
+  addEvent(`Campaign cycle spending: ${fmtMoney(spend)} — about ${Math.round(pct*100)}% of the ${fmtMoney(raised)} raised${note}.`);
+  return spend;
 }
 
 // ===== DISTRICT ACTIONS (Session only, 1 CP each) =====
@@ -2090,7 +2118,7 @@ function doDistrictMailer(){
   const apGain=+(rng(10,20)/10).toFixed(1);
   const wcGain=rng(500,1500);
   G.districtApproval=Math.min(100,G.districtApproval+apGain);
-  G.player.warchest+=wcGain;
+  playerRaise(wcGain);
   addEvent(`District mailer delivered to ${distName(G.player.district)} — +${apGain}% approval, +${fmtMoney(wcGain)} in small donations.`);
   checkMilestones();render();
 }
@@ -2973,6 +3001,9 @@ function computePrimaryResult(){
 
 // ===== REELECTION (GENERAL) =====
 function checkPlayerReelection(){
+  // Deduct the cycle's campaign spending BEFORE the warchest factors into the race —
+  // the money that got you here is the money that's already been spent.
+  applyCampaignSpending();
   const genDec=G.elecDeclarations?.find(d=>d.electionType==='general'&&d.fired&&!d.eliminated);
   const ch=genDec?.challenger;
   const approval=Math.round(G.districtApproval);
@@ -3946,7 +3977,7 @@ function resolveUnionEndorsement(unionId,score,maxScore){
   if(won){
     const wcGain=rng(u.bonus.wc[0],u.bonus.wc[1]);
     const apGain=rng(u.bonus.ap[0]*10,u.bonus.ap[1]*10)/10;
-    G.player.warchest+=wcGain;
+    playerRaise(wcGain);
     G.districtApproval=Math.min(100,G.districtApproval+apGain);
     G.endorsements[unionId]={sought:true,endorsed:true,result:'endorsed'};
     addEvent(`✓ ${u.name} endorsed you — +${fmtMoney(wcGain)} warchest, +${apGain.toFixed(1)}% district approval.`);
@@ -5018,7 +5049,7 @@ function showCC(){
 function startGame(){
   const first=document.getElementById('cc-first').value.trim()||'Keoni';
   const last=document.getElementById('cc-last').value.trim()||'Makoa';
-  G.player={id:0,first,last,district:document.getElementById('cc-dist').value,ethnicity:document.getElementById('cc-eth').value,gender:document.getElementById('cc-gen').value,age:parseInt(document.getElementById('cc-age').value)||34,ideology:parseInt(document.getElementById('cc-ideo').value)||35,party:document.getElementById('cc-party').value,seniority:0,warchest:15000,pos:null,factionId:null,capital:8};
+  G.player={id:0,first,last,district:document.getElementById('cc-dist').value,ethnicity:document.getElementById('cc-eth').value,gender:document.getElementById('cc-gen').value,age:parseInt(document.getElementById('cc-age').value)||34,ideology:parseInt(document.getElementById('cc-ideo').value)||35,party:document.getElementById('cc-party').value,seniority:0,warchest:15000,pos:null,factionId:null,capital:8,cycleRaised:0};
   G.reps=generateReps();assignPositions(G.reps);calibrateWarchests(G.reps);generateFactions();
   // Initialize inter-member relationships on Disposition scale
   G.reps.forEach(r=>{
