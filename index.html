@@ -1146,7 +1146,6 @@ function bumpFactionAffinity(idA,idB,amount){
   G.factionAffinityMod[idB][idA]=(G.factionAffinityMod[idB][idA]||0)+amount;
 }
 // ===== INTER-MEMBER RELATIONSHIPS =====
-function relValue(a,b){if(!a||!b||!a.relationships)return null;return a.relationships[b.id]??null;}
 function peerRapport(rep,peers){
   if(!rep||!rep.relationships||!peers.length)return null;
   const vals=peers.filter(p=>p&&p.id!==rep.id).map(p=>rep.relationships[p.id]).filter(v=>typeof v==='number');
@@ -2492,7 +2491,7 @@ function npcFactionTurn(){
 function _buildCand(rep,color){
   const facId=rep.factionId;
   const pledges=facId?G.reps.filter(r=>r.factionId===facId).map(r=>r.id):[rep.id];
-  return {factionId:facId||('r'+rep.id),leaderName:`Rep. ${displayLast(rep)}`,pledges,dealWithPlayer:null,deals:[],pledgeColor:color};
+  return {factionId:facId||('r'+rep.id),leaderId:rep.id,leaderName:`Rep. ${displayLast(rep)}`,pledges,dealWithPlayer:null,deals:[],pledgeColor:color};
 }
 function _assignPledgeAsks(){
   G.reps.forEach(r=>{
@@ -2525,7 +2524,9 @@ function initChallengeRace(challengerRep){
   // Apply pre-pledges
   candidates.forEach(c=>c.pledges.forEach(id=>{const r=G.reps.find(rr=>rr.id===id);if(r)r.pledge=c.factionId;}));
   _assignPledgeAsks();
-  G.speakerRace={active:true,declared:(playerIsSpeaker||playerIsChallenger),candidates,playerAcceptedOffer:null,rounds:[],draftOrg:{},challenge:true,playerIsSpeaker,playerIsChallenger,defenderId:playerIsSpeaker?0:speakerNpc.id,challengerId:playerIsChallenger?0:challengerRep.id};
+  G.speakerRace={active:true,declared:(playerIsSpeaker||playerIsChallenger),candidates,playerAcceptedOffer:null,rounds:[],draftOrg:{},challenge:true,playerIsSpeaker,playerIsChallenger,defenderId:playerIsSpeaker?0:speakerNpc.id,challengerId:playerIsChallenger?0:challengerRep.id,
+    // Resolve the floor vote next month — gives one month of pledging/offers.
+    resolveTotal:G.year*12+G.month+1};
   const tripleBonus=calcCapital(G.player)*2;
   G.player.capital+=tripleBonus;
   if(G.careerStats&&playerIsChallenger)G.careerStats.speakerAttempts++;
@@ -2550,7 +2551,7 @@ function initChallengeRace(challengerRep){
 function challengeSpeakership(){
   if(G.gameOver||G.gameWon)return;
   if(G.speakerRace?.active){addEvent('A Speaker race is already underway.');return;}
-  if(G.month<5||G.month>12){addEvent('Speakership challenges can only be launched May through December.');return;}
+  if(G.month<5||G.month>10){addEvent('Speakership challenges can only be launched May through October (Nov is the general, Dec is the open race).');return;}
   if(G.player.pos==='speaker'){addEvent('You already hold the Speakership.');return;}
   const pfSize=(G.playerFaction?.members.length||0)+1;
   if(pfSize<8){addEvent('You need 8 caucus members (including yourself) to mount a Speakership challenge.');return;}
@@ -2593,17 +2594,7 @@ function initSpeakerRace(){
   const PLEDGE_PAL=['#c0392b','#27ae60','#8e44ad','#e67e22','#16a085','#d35400','#c0922b'];
   candidates.forEach((c,i)=>{c.pledgeColor=PLEDGE_PAL[i%PLEDGE_PAL.length];});
   candidates.forEach(c=>c.pledges.forEach(id=>{const r=G.reps.find(r=>r.id===id);if(r)r.pledge=c.factionId;}));
-  // Some members demand a position to commit — more likely for senior and current title-holders
-  G.reps.forEach(r=>{
-    if(!r||r.pledge)return; // members already in a candidate's bloc don't get asks (they follow leader)
-    const roll=Math.random();
-    if(r.pos&&r.pos.startsWith('chair-')&&roll<0.40)r.pledgeAsk='leader';
-    else if(r.pos&&LEADERSHIP.some(l=>l.id===r.pos)&&roll<0.55)r.pledgeAsk='leader';
-    else if(r.pos&&r.pos.startsWith('vc-')&&roll<0.32)r.pledgeAsk='chair';
-    else if(r.seniority>=5&&roll<0.25)r.pledgeAsk='chair';
-    else if(r.seniority>=3&&roll<0.22)r.pledgeAsk='vc';
-    else r.pledgeAsk=null;
-  });
+  _assignPledgeAsks();
   G.speakerRace={active:true,declared:false,candidates,playerAcceptedOffer:null,rounds:[],draftOrg:{}};
   // Award triple capital for the speaker race
   const tripleBonus=calcCapital(G.player)*2;
@@ -2801,7 +2792,8 @@ function runFloorVote(){
   if(G.speakerRace.declared)slate.push({id:'player',label:`Rep. ${displayLast(G.player)}`,isPlayer:true});
   G.speakerRace.candidates.forEach(c=>{
     const f=G.factions.find(ff=>ff.id===c.factionId);
-    const leader=G.reps.find(r=>r.id===f?.leaderId);
+    // Prefer the candidate's own leaderId (handles independent challengers whose factionId is synthetic)
+    const leader=G.reps.find(r=>r.id===(c.leaderId!=null?c.leaderId:f?.leaderId));
     slate.push({id:c.factionId,label:c.leaderName,leader,cand:c,faction:f});
   });
   // Each rep picks the candidate they're most aligned with from the active slate
@@ -2895,8 +2887,9 @@ function runFloorVote(){
       setTimeout(()=>showSpeakerWinAssign(rounds[rounds.length-1].find(x=>x.slate.isPlayer)?.count||0,null,dealNotes),100);
     },300);
   } else {
-    // NPC winner: install them as Speaker
+    // NPC winner: install them as Speaker (and demote any sitting Speaker including the player)
     const spk=G.reps.find(r=>r.pos==='speaker');if(spk)spk.pos=null;
+    if(G.player.pos==='speaker')G.player.pos=null;
     if(winner&&winner.leader)winner.leader.pos='speaker';
     const finalRound=rounds[rounds.length-1];
     const playerLine=G.speakerRace?.declared===false?'':finalRound.find(x=>x.slate.isPlayer);
@@ -3493,7 +3486,7 @@ function endTurn(){
     G.donatedTo=[];
     elEvts=runElection();
     generalResult=checkPlayerReelection();
-    addEvent(generalResult.msg);elEvts.push(generalResult.msg);
+    elEvts.push(generalResult.msg);
     elEvts.forEach(e=>addEvent(e));
     if(!generalResult.won) G.gameOver=true;
   }
@@ -3506,8 +3499,13 @@ function endTurn(){
     G.player.capital=calcCapital(G.player);render();
     initSpeakerRace();return;
   }
-  // NPC challenges to a sitting Speaker can pop any month May-Dec
-  if(G.month>=5&&G.month<=12&&!G.speakerRace){
+  // A sitting challenge race resolves one month after it was launched
+  if(G.speakerRace?.challenge&&G.speakerRace.resolveTotal!=null&&(G.year*12+G.month)>=G.speakerRace.resolveTotal){
+    runFloorVote();return;
+  }
+  // NPC challenges to a sitting Speaker can pop any month May-Oct (skip Nov so they don't
+  // collide with the general election; the Dec open race fires only when the seat is open)
+  if(G.month>=5&&G.month<=10&&!G.speakerRace){
     maybeNpcChallenge();
   }
   // Floor vote at end of December of election year
@@ -4033,11 +4031,6 @@ function setView(mode){
 }
 
 // ===== RENDERING =====
-function seatOrder(){
-  const all=[{...G.player,isPlayer:true},...G.reps];
-  const rank=p=>{if(!p)return 999;const i=LEADERSHIP.findIndex(l=>l.id===p);if(i>=0)return i;if(p.startsWith('chair-'))return 100+parseInt(p.split('-')[1]);if(p.startsWith('vc-'))return 200+parseInt(p.split('-')[1]);return 999;};
-  return all.sort((a,b)=>rank(a.pos||a.position)-rank(b.pos||b.position));
-}
 const ROWS=[8,9,9,10,9,6];
 
 function makeSeat(m,viewMode){
@@ -4731,18 +4724,7 @@ function renderPowerTiers(){
   }
 }
 
-function showFactionDetail(f){
-  const isp=f.id==='player';
-  const members=G.reps.filter(r=>f.members.includes(r.id));
-  showModal(f.name,`${f.members.length} members`,()=>`
-    <div class="msec"><h3>Members</h3>${members.map(r=>`<div class="erow"><span>Rep. ${r.first} ${displayLast(r)}</span><span>${distName(r.district)} · ${ideoLabel(r.ideology)}</span></div>`).join('')||'<div class="mev">No members yet.</div>'}</div>
-    ${isp?`<div class="msec"><h3>Your Path</h3>
-      <div class="mev">Faction size: ${members.length}/8 for Speaker declaration</div>
-      <div class="mev">Position: ${posLabel(G.player.pos)||'None — lobby a chair in December'}</div>
-      <div class="mev">Warchest: ${fmtMoney(G.player.warchest)} / $100K milestone</div>
-      <div class="mev">Speaker attempts so far: ${G.careerStats.speakerAttempts}</div>
-    </div>`:''}`);
-}
+
 
 function renderLegend(){
   const el=document.getElementById('legend');el.innerHTML='';
@@ -4849,7 +4831,7 @@ function renderSidebar(){
         ${canEndorse?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Endorse in Election: select a rep and use the action.</div>`:''}
         ${G.month===12&&!G.player.pos?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Tip: Select a committee chair → "Lobby for Committee Seat"</div>`:''}
         ${G.speakerRace?.active&&!G.speakerRace.declared?`<button class="gact" onclick="declareForSpeaker()"><span>Declare for Speaker</span><span class="ac">Free</span></button>`:''}
-        ${(!G.speakerRace?.active&&G.month>=5&&G.month<=12&&G.player.pos!=='speaker'&&(G.playerFaction?.members.length||0)+1>=8&&(G.reps.some(r=>r.pos==='speaker')))?`<button class="gact" onclick="challengeSpeakership()"><span>⚔️ Challenge for Speakership</span><span class="ac">Free</span></button>`:''}
+        ${(!G.speakerRace?.active&&G.month>=5&&G.month<=10&&G.player.pos!=='speaker'&&(G.playerFaction?.members.length||0)+1>=8&&(G.reps.some(r=>r.pos==='speaker')))?`<button class="gact" onclick="challengeSpeakership()"><span>⚔️ Challenge for Speakership</span><span class="ac">Free</span></button>`:''}
       </div>`;
     ap.style.display='none';return;
   }
